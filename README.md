@@ -177,45 +177,82 @@ node web/tools/parity.mjs    # 같은 경로를 JS 로 돌려 한 걸음씩 대�
 
 ## 배포
 
-웹 버전은 정적 파일이라 올리기만 하면 된다. 올리기 전에 꼭 할 것:
+웹 버전은 정적 파일이라 올리기만 하면 된다.
+**GitHub Pages 는 push 하면 자동으로 배포된다**(아래). itch.io 는 zip 을 올린다.
+
+### GitHub Pages (이 저장소가 쓰는 방식)
+
+**GitHub Actions 로 배포한다.** `web/` 이 사이트 루트가 되므로 주소가 짧다.
+`docs/` 로 복사하거나 `.nojekyll` 을 만들 필요가 없다.
+
+> 공개 주소: <https://youngjin2022.github.io/zombie_game/>
+
+배포 워크플로는 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) 이다.
+하는 일은 둘이다.
+
+1. **검사** — `validate.py --walk --max-reps 20`, `sync_web_data.py --check`,
+   `parity.py` + `parity.mjs`. **하나라도 깨지면 배포하지 않는다.**
+2. **배포** — `web/` 폴더를 통째로 Pages 아티팩트로 올린다.
+
+#### 처음 한 번만 하는 설정
+
+저장소 웹페이지에서 직접 해야 한다. CLI 로는 안 된다.
+
+1. 저장소 → **Settings** (위쪽 탭)
+2. 왼쪽 메뉴 아래쪽 **Pages**
+3. **Build and deployment** → **Source** 를 **`GitHub Actions`** 로 바꾼다.
+   (기본값인 `Deploy from a branch` 로 두면 이 워크플로의 결과가 쓰이지 않는다)
+4. 저장 버튼은 없다. 고르면 바로 적용된다.
+
+그다음 **Actions** 탭에서 `GitHub Pages 배포` 워크플로가 도는지 본다.
+초록 체크가 뜨고 1~2분 뒤 주소가 열린다.
+첫 배포는 Pages 환경을 만드느라 조금 더 걸린다.
+
+#### 다시 배포하기
+
+**`main` 에 push 하면 끝이다.** 워크플로가 알아서 검사하고 배포한다.
 
 ```bash
-python sync_web_data.py        # web/data 를 최신으로
-python validate.py --walk      # 시나리오에 오류가 없는지
-python parity.py && node web/tools/parity.mjs   # 두 엔진이 같은지
+python sync_web_data.py     # 시나리오를 고쳤다면 반드시 먼저
+git add -A
+git commit -m "무엇을 고쳤는지"
+git push
 ```
 
-### GitHub Pages
+고친 것이 `web/` 밖(예: `engine/`, `validate.py`, `README.md`)뿐이어도 똑같다.
+push 하면 검사가 돌고, 통과하면 같은 사이트가 다시 올라간다.
 
-1. 저장소를 GitHub 에 올린다 (`web/` 폴더가 들어 있어야 한다).
-   ```bash
-   git init
-   git add .
-   git commit -m "좀비 생존 텍스트 어드벤처"
-   git branch -M main
-   git remote add origin https://github.com/<사용자>/<저장소>.git
-   git push -u origin main
-   ```
-2. GitHub 저장소 페이지에서 **Settings → Pages** 로 간다.
-3. **Source** 를 `Deploy from a branch` 로 두고, **Branch** 를 `main` / 폴더를 `/docs`
-   또는 루트로 고른다.
-   - 루트를 고르면 주소가 `https://<사용자>.github.io/<저장소>/web/` 이 된다.
-   - 주소를 `.../<저장소>/` 로 짧게 하고 싶으면 `web/` 을 `docs/` 로 복사하고 `/docs` 를 고른다.
-     ```bash
-     cp -r web docs        # 윈도: xcopy /E /I web docs
-     ```
-     이때 `docs/` 도 시나리오를 고칠 때마다 다시 복사해야 한다.
-4. **Save** 를 누르고 1~2분 기다리면 주소가 뜬다.
+**올리기 전에 로컬에서 먼저 확인하는 것을 권한다.** CI 가 똑같은 것을 보지만,
+로컬이 훨씬 빠르다.
 
-주의할 점 둘.
+```bash
+python sync_web_data.py --check                 # web/data 가 data 와 같은지
+python validate.py --walk --max-reps 20         # 시나리오 오류 0개인지
+python parity.py && node web/tools/parity.mjs   # 파이썬 = JS 인지
+python -m http.server 8000 --directory web      # 눈으로 한 판
+```
 
-- **`.nojekyll` 파일을 루트에 하나 만들어 둔다.** 없어도 지금 구조는 돌아가지만,
-  나중에 `_` 로 시작하는 폴더를 추가하면 Jekyll 이 빼 버린다.
-  ```bash
-  touch .nojekyll
-  ```
-- `web/data/` 가 약 1.4MB 다. GitHub Pages 는 gzip 으로 보내 주므로 실제 전송량은
-  300KB 쯤이다. 더 줄이려면 `python sync_web_data.py --minify` 로 복사한다.
+코드를 전혀 안 고치고 **배포만 다시** 하고 싶으면 (예: 배포가 한 번 실패했을 때):
+
+- 저장소 → **Actions** 탭 → 왼쪽에서 **GitHub Pages 배포** → 오른쪽 **Run workflow** →
+  Branch `main` → **Run workflow**.
+- 워크플로에 `workflow_dispatch:` 가 있어서 가능하다.
+
+#### 잘 안 될 때
+
+| 증상 | 원인과 해결 |
+|---|---|
+| 404 | Settings → Pages → Source 가 `GitHub Actions` 가 아니다. 위 설정 1~4를 다시 본다 |
+| 화면은 뜨는데 "시나리오를 불러오지 못했다" | `web/data/` 가 저장소에 없다. `.gitignore` 가 `web/data` 를 막고 있지 않은지 보고, `python sync_web_data.py` 뒤 커밋했는지 확인한다 |
+| Actions 가 `sync_web_data.py --check` 에서 실패 | `data/` 만 고치고 `web/data/` 를 안 올렸다. `python sync_web_data.py` 를 돌리고 다시 커밋한다 |
+| Actions 가 `parity.mjs` 에서 실패 | 엔진을 한쪽만 고쳤다. 파이썬과 JS 를 같이 고친다 |
+| push 가 403 | 그 저장소에 쓰기 권한이 없는 계정으로 로그인돼 있다. `gh auth status` 로 어떤 계정인지 본다 |
+
+#### 다른 저장소에 올릴 때
+
+이 워크플로는 저장소 이름을 쓰지 않는다. 그대로 복사해 쓰면 된다.
+주소만 `https://<사용자>.github.io/<저장소>/` 로 바뀐다.
+웹 버전의 모든 경로가 상대 경로라서 하위 폴더 주소에서도 그대로 돈다.
 
 ### itch.io
 
@@ -330,6 +367,8 @@ web/                 웹 버전 (정적 사이트. 빌드 과정 없음)
   ui.js / storage.js 화면과 저장
   data/              sync_web_data.py 가 복사한 시나리오
   tools/parity.mjs   파이썬 결과와 대조
+.github/workflows/
+  pages.yml          push 하면 검사하고 web/ 를 GitHub Pages 로 배포한다
 PROGRESS.md          작업 진행 기록
 ```
 
