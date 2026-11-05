@@ -103,7 +103,7 @@ def apply(state, eff: dict | None) -> list:
         if state.alive[p]:
             state.alive[p] = False
             state.death_cause = "killed"
-            events.append(f"{state.name_of(p)}가 더는 따라오지 않는다.")
+            events.append(f"{state.name_subj(p)} 더는 따라오지 않는다.")
 
     return events
 

@@ -122,6 +122,62 @@ button { font: inherit; color: inherit; }
 .prologue p { margin: 0 0 0.35rem; }
 .prologue p.blank { height: 0.8rem; margin: 0; }
 .title-codex { color: var(--ink-2); font-size: 0.9em; margin: 0 0 1.2rem; }
+/* ---- 시작 화면: 모드와 이름 ---- */
+
+.setup { margin: 0 0 1.6rem; }
+.setup-h {
+  margin: 0 0 0.6rem; font-size: 0.95em; font-weight: 600;
+  color: var(--accent); letter-spacing: 0.06em;
+}
+
+.mode-list { display: grid; gap: 0.5rem; margin-bottom: 1.4rem; }
+.mode-card {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 0.7rem 0.85rem; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--bg-2);
+  color: var(--ink); font: inherit;
+}
+.mode-card:hover:not(:disabled) { background: var(--bg-3); border-color: var(--line-2); }
+.mode-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mode-card.on { border-color: var(--accent); background: #241f12; }
+.mode-card.on .mode-name { color: #f2e6c8; }
+.mode-card.soon { cursor: default; opacity: 0.5; }
+.mode-name {
+  display: flex; align-items: center; gap: 0.45rem;
+  font-weight: 600; margin-bottom: 0.15rem;
+}
+.mode-name .badge {
+  font-size: 0.72em; font-weight: 400; letter-spacing: 0.04em;
+  padding: 0.1rem 0.4rem; border: 1px solid var(--line-2);
+  border-radius: 999px; color: var(--ink-3);
+}
+.mode-desc { display: block; font-size: 0.85em; color: var(--ink-3); }
+
+.name-fields { display: grid; gap: 0.9rem; margin-bottom: 1.1rem; }
+.name-field label {
+  display: block; margin-bottom: 0.3rem;
+  font-size: 0.88em; color: var(--ink-2);
+}
+.name-field input {
+  width: 100%; box-sizing: border-box;
+  padding: 0.7rem 0.8rem; font: inherit; font-size: 1.05em;
+  color: var(--ink); background: var(--bg-2);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.name-field input::placeholder { color: var(--ink-3); font-size: 0.85em; }
+.name-field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.name-field input.bad { border-color: var(--bad); }
+.field-err {
+  margin: 0.3rem 0 0; min-height: 1.1em;
+  font-size: 0.82em; color: #e4786c;
+}
+
+#btn-start { width: 100%; }
+
+@media (min-width: 34rem) {
+  .name-fields { grid-template-columns: 1fr 1fr; }
+}
+
 .title-buttons { display: flex; flex-wrap: wrap; gap: var(--gap); }
 .title-buttons .btn { flex: 1 1 auto; min-width: 9rem; }
 .warn {

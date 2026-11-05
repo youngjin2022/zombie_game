@@ -106,8 +106,14 @@ def collection_summary(content) -> str:
             f" ({detail}, 숨김 {hidden_got}/?)")
 
 
-def collection_list(content) -> list:
-    """h 메뉴용 상세 목록. 루트별로 나눠 보여 준다."""
+def collection_list(content, names=None) -> list:
+    """h 메뉴용 상세 목록. 루트별로 나눠 보여 준다.
+
+    `names` 를 주면 엔딩 제목의 {me} / {friend} 를 그 이름으로 바꿔 보여 준다.
+    """
+    def t(text):
+        return names.render(text) if names else text
+
     coll = load_collection()
     endings = {k: v for k, v in content.endings.items() if not v.get("placeholder")}
     out: list = []
@@ -125,7 +131,7 @@ def collection_list(content) -> list:
             branch = f" ·{e['branch']}" if e.get("branch") else ""
             if eid in coll:
                 mark = "✔" if not e.get("hidden") else "★"
-                out.append(f"   {mark} {e.get('title','?')} ({label}{branch})"
+                out.append(f"   {mark} {t(e.get('title','?'))} ({label}{branch})"
                            f" x{coll[eid]['count']}")
             elif e.get("hidden"):
                 out.append("   · ??? (숨겨진 엔딩)")

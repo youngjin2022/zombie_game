@@ -80,6 +80,11 @@ class GameState:
     flags: list = field(default_factory=list)
     history: list = field(default_factory=list)         # 선택 id 이력
 
+    # 플레이어가 지은 이름. 시나리오 텍스트의 {me} / {friend} 가 이걸 쓴다.
+    # 기본값은 도구(parity / simulate / trace)와 이름 없는 옛 저장을 위한 것이다.
+    names: dict = field(default_factory=lambda: {"yj": "영진", "sc": "승철"})
+    mode: str = "solo"                  # solo / local2 / online
+
     scene: str = ""
     route: str = "common"
     starve_min: float = 0.0
@@ -130,7 +135,20 @@ class GameState:
         return None
 
     def name_of(self, pid: str) -> str:
-        return "영진" if pid == "yj" else "승철"
+        """화면과 사건 문장에 쓰는 이름. 플레이어가 지은 이름이다."""
+        d = self.names or {}
+        return d.get(pid) or ("영진" if pid == "yj" else "승철")
+
+    def call_of(self, pid: str) -> str:
+        """부를 때 쓰는 이름(세 글자 이상 한글이면 성을 뺀다)."""
+        from .names import call_name
+        return call_name(self.name_of(pid))
+
+    def name_subj(self, pid: str) -> str:
+        """이름 + 주격 조사. 받침에 맞춰 '이/가' 를 고른다."""
+        from .names import josa
+        n = self.name_of(pid)
+        return n + josa(n, "이", "가")
 
     # ---- 시간 경과 ----
 
@@ -211,7 +229,7 @@ class GameState:
         self.hp[pid] = int(_clamp(self.hp[pid] + amount, 0, self.hp_max[pid]))
         if self.hp[pid] <= 0:
             self.alive[pid] = False
-            events.append(f"{self.name_of(pid)}가 쓰러진다. 일어나지 않는다.")
+            events.append(f"{self.name_subj(pid)} 쓰러진다. 일어나지 않는다.")
             self.death_cause = "wounds"      # 가장 최근 사인을 남긴다
         return events
 

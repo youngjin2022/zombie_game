@@ -47,6 +47,11 @@ jobs:
           python parity.py
           node web/tools/parity.mjs
 
+      - name: 이름·조사 대조 (파이썬 = JS)
+        run: |
+          python names_parity.py
+          node web/tools/names_parity.mjs
+
   deploy:
     name: 배포
     needs: check

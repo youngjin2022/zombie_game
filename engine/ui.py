@@ -58,10 +58,11 @@ class UI:
               f" · 기온 {state.temp_c():.0f}℃{night} · {where}")
         hp_yj = f"{state.hp['yj']}/{state.hp_max['yj']}" if state.alive["yj"] else "사망"
         hp_sc = f"{state.hp['sc']}/{state.hp_max['sc']}" if state.alive["sc"] else "사망"
-        print(f" 영진 {hp_yj}  승철 {hp_sc}"
+        n_yj, n_sc = state.name_of("yj"), state.name_of("sc")
+        print(f" {n_yj} {hp_yj}  {n_sc} {hp_sc}"
               f"  허기 {state.hunger:.0f}  체온 {state.warmth:.0f}")
         print(f" 물 {state.water}ml  식량 {state.food}끼니"
-              f"  탄약 영진{state.ammo['yj']}/승철{state.ammo['sc']}"
+              f"  탄약 {n_yj}{state.ammo['yj']}/{n_sc}{state.ammo['sc']}"
               f"  소음 {state.noise:.0f}")
         comp = ", ".join(f"{c['name']}({c['trust']})" for c in state.companions) or "없음"
         inj = []
@@ -87,7 +88,8 @@ class UI:
             qty = f" x{n}" if n > 1 else ""
             print(f" - {name}{qty}" + (f" — {desc}" if desc else ""))
         print(f" - 물 {state.water}ml / 식량 {state.food}끼니")
-        print(f" - 탄약: 영진 {state.ammo['yj']}발, 승철 {state.ammo['sc']}발")
+        print(f" - 탄약: {state.name_of('yj')} {state.ammo['yj']}발,"
+              f" {state.name_of('sc')} {state.ammo['sc']}발")
         if state.companions:
             print(THIN)
             print(" 동료")
@@ -113,11 +115,13 @@ class UI:
 
     # ---- 입력 ----
 
-    def ask(self, prompt: str = " 선택 > ") -> str:
+    def ask(self, prompt: str = " 선택 > ", lower: bool = True) -> str:
+        """한 줄 입력. 이름을 받을 때는 lower=False (대문자를 지켜야 한다)."""
         try:
-            return input(prompt).strip().lower()
+            raw = input(prompt).strip()
         except EOFError:
             return "q"
+        return raw.lower() if lower else raw
 
     def pause(self, prompt: str = " (엔터) ") -> None:
         try:

@@ -9,6 +9,8 @@
  * "이 브라우저에서는 저장이 유지되지 않는다" 고 알린다.
  */
 
+import { checkName, MODES, SOLO } from "./engine.js";
+
 export const SAVE_VERSION = 2;
 export const SLOTS = [1, 2, 3];
 
@@ -104,7 +106,10 @@ export const store = new Store();
  * 설정
  * ===================================================================== */
 
-export const DEFAULT_SETTINGS = { typewriter: true, fontSize: "m", lineDelay: 170 };
+export const DEFAULT_SETTINGS = {
+  typewriter: true, fontSize: "m", lineDelay: 170,
+  mode: SOLO, names: { yj: "", sc: "" },     // 마지막에 쓴 모드와 이름
+};
 
 export function loadSettings() {
   const d = store.getJSON(KEYS.settings, {}) || {};
@@ -114,6 +119,14 @@ export function loadSettings() {
   if (Number.isFinite(d.lineDelay) && d.lineDelay >= 0 && d.lineDelay <= 2000) {
     out.lineDelay = d.lineDelay;
   }
+  if (MODES.includes(d.mode)) out.mode = d.mode;
+  out.names = { yj: "", sc: "" };
+  if (d.names && typeof d.names === "object") {
+    for (const p of ["yj", "sc"]) {
+      const r = checkName(d.names[p]);
+      if (r.ok) out.names[p] = r.name;
+    }
+  }
   return out;
 }
 
@@ -122,6 +135,8 @@ export function saveSettings(s) {
     typewriter: Boolean(s.typewriter),
     fontSize: s.fontSize,
     lineDelay: s.lineDelay,
+    mode: s.mode,
+    names: { yj: (s.names && s.names.yj) || "", sc: (s.names && s.names.sc) || "" },
   });
 }
 
@@ -185,6 +200,8 @@ export function makePayload(game, { label = "" } = {}) {
       survivors,
       picks: s.history.length,
       ending: game.ending || null,
+      mode: s.mode || SOLO,
+      names: { yj: s.nameOf("yj"), sc: s.nameOf("sc") },
     },
   };
 }
@@ -264,6 +281,19 @@ export function validatePayload(payload, content) {
     if (!Number.isFinite(c.trust) || c.trust < 0 || c.trust > 100) {
       return bad(`동료 ${c.id} 의 신뢰도가 이상하다: ${show(c.trust)}`);
     }
+  }
+  // 이름과 모드. 아직 이름이 없는 옛 저장(version 2 초기형)은 받아 주고,
+  // 불러온 쪽에서 이름을 먼저 묻는다. 있다면 모양이 맞아야 한다.
+  if (s.names !== undefined) {
+    if (!isPlainObject(s.names)) return bad("names 가 객체가 아니다");
+    for (const pid of ["yj", "sc"]) {
+      const r = checkName(s.names[pid]);
+      if (!r.ok) return bad(`이름(${pid})이 이상하다: ${r.error}`);
+    }
+    if (s.names.yj === s.names.sc) return bad("두 이름이 같다");
+  }
+  if (s.mode !== undefined && !MODES.includes(s.mode)) {
+    return bad(`모드가 이상하다: ${show(s.mode)}`);
   }
   if (payload.meta !== undefined && !isPlainObject(payload.meta)) return bad("meta 가 객체가 아니다");
   return { ok: true, payload };

@@ -101,6 +101,206 @@ function clamp(v, lo, hi) {
 }
 
 /* =====================================================================
+ * 2.5 이름과 한국어 조사 (engine/names.py 와 한 쌍)
+ *
+ * 시나리오 텍스트에는 사람 이름을 직접 쓰지 않는다. 대신 변수를 쓴다.
+ *
+ *   {me}            내 이름(플레이어 1이 맡는 인물)
+ *   {friend}        함께 생존하는 사람의 이름(플레이어 2가 맡는 인물)
+ *   {me!}           호칭형. 세 글자 이상 한글 이름이면 성을 뺀다 (김영진 -> 영진)
+ *   {me:이/가}      조사를 받침에 맞춰 고른다
+ *   {friend:아/야}  부르는 조사. 호칭형이 자동으로 쓰인다 (김영진 -> "영진아")
+ *
+ * engine/names.py 를 고치면 이쪽도 같이 고친다.
+ * ===================================================================== */
+
+const HANGUL_FIRST = 0xac00;          // '가'
+const HANGUL_LAST = 0xd7a3;           // '힣'
+const JONG_COUNT = 28;
+const JONG_RIEUL = 8;                 // 종성 'ㄹ'
+
+// 영문 끝글자: l -> ㄹ, m/n -> 받침 있음, 그 밖 -> 받침 없음
+const LATIN_RIEUL = "lL";
+const LATIN_FINAL = "mnMN";
+// 숫자 끝글자: 1·7·8 -> ㄹ, 0·3·6 -> 받침 있음, 2·4·5·9 -> 없음
+const DIGIT_RIEUL = "178";
+const DIGIT_FINAL = "01368";
+
+const NAME_RE = /^[가-힣a-zA-Z0-9]+$/;
+const HANGUL_ONLY_RE = /^[가-힣]+$/;
+export const NAME_MAX = 10;
+
+// {me} / {friend} / {me!} / {me:이/가} / {friend!:아/야}
+const TOKEN_RE = /\{(me|friend)(!?)(?::([^}/]*)\/([^}/]*))?\}/g;
+
+const VOCATIVE = new Set(["아|야"]);
+
+/** 이름 끝글자의 종성 종류. 0=없음, 1=있음, 2=ㄹ. */
+export function finalKind(name) {
+  if (!name) return 0;
+  const ch = name[name.length - 1];
+  const code = ch.charCodeAt(0);
+  if (code >= HANGUL_FIRST && code <= HANGUL_LAST) {
+    const jong = (code - HANGUL_FIRST) % JONG_COUNT;
+    if (jong === 0) return 0;
+    return jong === JONG_RIEUL ? 2 : 1;
+  }
+  if (LATIN_RIEUL.includes(ch)) return 2;
+  if (LATIN_FINAL.includes(ch)) return 1;
+  if (DIGIT_RIEUL.includes(ch)) return 2;
+  if (DIGIT_FINAL.includes(ch)) return 1;
+  return 0;
+}
+
+export function hasFinal(name) {
+  return finalKind(name) !== 0;
+}
+
+export function isRieulFinal(name) {
+  return finalKind(name) === 2;
+}
+
+// 두 글자 성. 네 글자 이상 한글 이름에서만 본다.
+const DOUBLE_SURNAMES = ["남궁", "황보", "제갈", "선우", "서문", "사공", "독고", "동방", "망절"];
+
+/** 부를 때 쓰는 형태. 세 글자 이상 한글 이름이면 성을 뺀다.
+ *  김영진 -> 영진 / 남궁민수 -> 민수 / 민수 -> 민수 / Mike -> Mike */
+export function callName(name) {
+  if (name && name.length >= 3 && HANGUL_ONLY_RE.test(name)) {
+    if (name.length >= 4 && DOUBLE_SURNAMES.some((x) => name.startsWith(x))) return name.slice(2);
+    return name.slice(1);
+  }
+  return name;
+}
+
+/** 받침에 맞는 조사. '으'로 시작하는 쪽은 ㄹ 받침에서 받침 없는 쪽을 쓴다. */
+export function josa(name, withFinal, withoutFinal) {
+  const kind = finalKind(name);
+  if (withFinal.startsWith("으") && kind === 2) return withoutFinal;
+  return kind !== 0 ? withFinal : withoutFinal;
+}
+
+export class Names {
+  constructor(me = "영진", friend = "승철") {
+    this.me = me || "영진";
+    this.friend = friend || "승철";
+  }
+
+  static fromState(state) {
+    const d = (state && state.names) || {};
+    return new Names(d.yj, d.sc);
+  }
+
+  toDict() {
+    return { yj: this.me, sc: this.friend };
+  }
+
+  of(pid) {
+    return pid === "yj" ? this.me : this.friend;
+  }
+
+  callOf(pid) {
+    return callName(this.of(pid));
+  }
+
+  /** 텍스트의 {me} / {friend} 토큰을 실제 이름으로 바꾼다. */
+  render(text) {
+    if (!text || text.indexOf("{") < 0) return text;
+    return String(text).replace(TOKEN_RE, (_m, who, bang, a, b) => {
+      const full = who === "me" ? this.me : this.friend;
+      const vocative = a !== undefined && VOCATIVE.has(`${a}|${b}`);
+      const name = (bang || vocative) ? callName(full) : full;
+      if (a === undefined) return name;
+      return name + josa(name, a, b);
+    });
+  }
+
+  renderAll(items) {
+    return (items || []).map((t) => this.render(t));
+  }
+}
+
+/* ---- 게임 모드 (engine/modes.py 와 한 쌍) ---- */
+
+export const SOLO = "solo";
+export const LOCAL2 = "local2";
+export const ONLINE = "online";
+export const MODES = [SOLO, LOCAL2, ONLINE];
+
+export const MODE_LABEL = {
+  [SOLO]: "혼자 하기",
+  [LOCAL2]: "같은 화면에서 둘이",
+  [ONLINE]: "온라인으로 둘이",
+};
+
+export const MODE_DESC = {
+  [SOLO]: "두 사람의 이야기를 혼자 끌고 간다.",
+  [LOCAL2]: "한 화면을 보면서 둘이 각자 고른다. 다르면 상의한다.",
+  [ONLINE]: "각자 휴대폰에서 방 코드로 만난다.",
+};
+
+// 아직 안 열린 모드는 시작 화면에 "준비 중" 으로 뜨고 고를 수 없다.
+export const MODE_READY = {
+  [SOLO]: true,
+  [LOCAL2]: true,
+  [ONLINE]: false,
+};
+
+// 이름을 물을 때 쓰는 두 칸의 이름표. (첫 칸 = {me}, 둘째 칸 = {friend})
+export const MODE_NAME_LABEL = {
+  [SOLO]: ["내 이름", "함께 생존할 사람의 이름"],
+  [LOCAL2]: ["플레이어 1 이름", "플레이어 2 이름"],
+  [ONLINE]: ["내 이름", "상대 이름"],
+};
+
+export const TWO_PLAYER = [LOCAL2, ONLINE];
+
+export function isTwoPlayer(mode) {
+  return TWO_PLAYER.includes(mode);
+}
+
+export function modeReady(mode) {
+  return Boolean(MODE_READY[mode]);
+}
+
+export function nameLabels(mode) {
+  return MODE_NAME_LABEL[mode] || MODE_NAME_LABEL[SOLO];
+}
+
+export const ERR_EMPTY = "이름을 입력해 주세요.";
+export const ERR_LONG = `이름은 ${NAME_MAX}자까지예요.`;
+export const ERR_CHARS = "한글, 영문, 숫자만 쓸 수 있어요.";
+export const ERR_SAME = "두 이름이 같아요. 다르게 적어 주세요.";
+
+/** {ok, name, error}. 앞뒤 공백을 지우고 1~10자, 한글/영문/숫자만. */
+export function checkName(raw) {
+  const name = String(raw === undefined || raw === null ? "" : raw).trim();
+  if (!name) return { ok: false, name: "", error: ERR_EMPTY };
+  if (name.length > NAME_MAX) return { ok: false, name, error: ERR_LONG };
+  if (!NAME_RE.test(name)) return { ok: false, name, error: ERR_CHARS };
+  return { ok: true, name, error: "" };
+}
+
+/** {ok, names:{yj,sc}, errors:{me,friend}} */
+export function checkPair(rawMe, rawFriend) {
+  const a = checkName(rawMe);
+  const b = checkName(rawFriend);
+  const errors = { me: a.error, friend: b.error };
+  if (a.ok && b.ok && a.name === b.name) {
+    errors.friend = ERR_SAME;
+    return { ok: false, names: { yj: a.name, sc: b.name }, errors };
+  }
+  return { ok: a.ok && b.ok, names: { yj: a.name, sc: b.name }, errors };
+}
+
+/** 화면에 넣을 때 쓰는 이스케이프. (DOM 은 textContent 를 쓰지만 같이 둔다) */
+export function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+/* =====================================================================
  * 3. 시계와 기온 (engine/state.py)
  * ===================================================================== */
 
@@ -150,6 +350,7 @@ export const STATE_FIELDS = [
   "hunger", "warmth", "water", "food", "ammo", "noise",
   "indoors", "location", "yj_combat", "sc_aim", "sc_judgment",
   "items", "companions", "flags", "history",
+  "names", "mode",
   "scene", "route", "starve_min", "meal_min", "death_cause",
 ];
 
@@ -186,6 +387,11 @@ export class GameState {
     this.flags = [];
     this.history = [];
 
+    // 플레이어가 지은 이름. 시나리오 텍스트의 {me} / {friend} 가 이걸 쓴다.
+    // 기본값은 도구(parity.mjs)와 이름 없는 옛 저장을 위한 것이다.
+    this.names = { yj: "영진", sc: "승철" };
+    this.mode = "solo";                 // solo / local2 / online
+
     this.scene = "";
     this.route = "common";
     this.starve_min = 0.0;
@@ -214,7 +420,20 @@ export class GameState {
   has(item) { return this.items.includes(item); }
   countItem(item) { return this.items.filter((i) => i === item).length; }
   companion(cid) { return this.companions.find((c) => c.id === cid) || null; }
-  nameOf(pid) { return pid === "yj" ? "영진" : "승철"; }
+  /** 화면과 사건 문장에 쓰는 이름. 플레이어가 지은 이름이다. */
+  nameOf(pid) {
+    const d = this.names || {};
+    return d[pid] || (pid === "yj" ? "영진" : "승철");
+  }
+
+  /** 부를 때 쓰는 이름(세 글자 이상 한글이면 성을 뺀다). */
+  callOf(pid) { return callName(this.nameOf(pid)); }
+
+  /** 이름 + 주격 조사. 받침에 맞춰 '이/가' 를 고른다. */
+  nameSubj(pid) {
+    const n = this.nameOf(pid);
+    return n + josa(n, "이", "가");
+  }
 
   // ---- 시간 경과 ----
 
@@ -300,7 +519,7 @@ export class GameState {
     this.hp[pid] = Math.trunc(clamp(this.hp[pid] + amount, 0, this.hp_max[pid]));
     if (this.hp[pid] <= 0) {
       this.alive[pid] = false;
-      events.push(`${this.nameOf(pid)}가 쓰러진다. 일어나지 않는다.`);
+      events.push(`${this.nameSubj(pid)} 쓰러진다. 일어나지 않는다.`);
       this.death_cause = "wounds";    // 가장 최근 사인을 남긴다
     }
     return events;
@@ -661,7 +880,7 @@ export function applyEffects(state, eff) {
     if (state.alive[p]) {
       state.alive[p] = false;
       state.death_cause = "killed";
-      events.push(`${state.nameOf(p)}가 더는 따라오지 않는다.`);
+      events.push(`${state.nameSubj(p)} 더는 따라오지 않는다.`);
     }
   }
 
@@ -771,6 +990,25 @@ export class Game {
     this.rng = opts.rng || new Rng(this.seed);
     this.state = opts.state || this.newState();
     this.ending = opts.ending || null;
+    this.names = Names.fromState(this.state);
+  }
+
+  /** 상태의 이름이 바뀌었을 때(새 판·불러오기) 다시 읽는다. */
+  refreshNames() {
+    this.names = Names.fromState(this.state);
+  }
+
+  /** 시나리오 텍스트의 {me} / {friend} 를 실제 이름으로 바꾼다. */
+  t(text) {
+    return text ? this.names.render(text) : text;
+  }
+
+  /** 블록 목록의 text 를 전부 치환한다. */
+  renderBlocks(blocks) {
+    for (const b of blocks) {
+      if (b && typeof b.text === "string") b.text = this.names.render(b.text);
+    }
+    return blocks;
   }
 
   newState() {
@@ -782,13 +1020,17 @@ export class Game {
     return s;
   }
 
-  /** 새 게임. 시작 장면에 진입하고 블록을 돌려준다. */
-  begin() {
+  /** 새 게임. 시작 장면에 진입하고 블록을 돌려준다.
+   *  opts: { names: {yj, sc}, mode } — 시작 화면에서 받은 이름과 모드. */
+  begin(opts = {}) {
     this.state = this.newState();
+    if (opts.names) this.state.names = { yj: opts.names.yj, sc: opts.names.sc };
+    if (opts.mode) this.state.mode = opts.mode;
+    this.refreshNames();
     this.ending = null;
     const r = this.enter(this.state.scene);
     this.ending = r.ending;
-    return { blocks: r.events.map(line), ending: r.ending };
+    return { blocks: this.renderBlocks(r.events.map(line)), ending: r.ending };
   }
 
   /** 장면 진입. on_enter 를 적용하고 게임 오버면 엔딩 id 를 돌려준다. */
@@ -838,7 +1080,7 @@ export class Game {
     }
     const sc = this.scLine(scene);
     if (sc && this.state.alive.sc) blocks.push({ t: "sc", text: sc });
-    return blocks;
+    return this.renderBlocks(blocks);
   }
 
   /** 선택지 목록. [{index, id, text, ok, label}] */
@@ -849,9 +1091,9 @@ export class Game {
       return {
         index: i,
         id: ch.id || "?",
-        text: ch.text || "",
+        text: this.t(ch.text || ""),
         ok: r.ok,
-        label: ch.unmet_label || r.label,
+        label: this.t(ch.unmet_label || r.label),
       };
     });
   }
@@ -898,7 +1140,7 @@ export class Game {
     const over = this.checkGameover();
     if (over) {
       this.ending = over;
-      return { blocks, ending: over, check };
+      return { blocks: this.renderBlocks(blocks), ending: over, check };
     }
 
     for (const b of this.soloBridge()) blocks.push(b);
@@ -912,7 +1154,7 @@ export class Game {
       for (const e of r.events) blocks.push(line(e));
       this.ending = r.ending;
     }
-    return { blocks, ending: this.ending, check };
+    return { blocks: this.renderBlocks(blocks), ending: this.ending, check };
   }
 
   /** 한 명만 죽은 경우 혼자 가는 이야기로 넘긴다. */
@@ -925,15 +1167,15 @@ export class Game {
     s.flags.push(`lost_${gone}`);
     const blocks = [{ t: "gap" }];
     if (gone === "sc") {
-      blocks.push(line("승철의 배낭을 벗겨 멘다. 침낭 두 개가 어깨를 누른다."));
+      blocks.push(line("{friend}의 배낭을 벗겨 멘다. 침낭 두 개가 어깨를 누른다."));
       blocks.push(line("“미안하다.” 입 밖으로는 나오지 않는다."));
     } else {
-      blocks.push(line("승철이 영진의 권총을 집는다. 손이 심하게 떨린다."));
+      blocks.push(line("{friend:이/가} {me}의 권총을 집는다. 손이 심하게 떨린다."));
       blocks.push(line("“형이 가르쳐 준 대로. 숨 참고, 당긴다.”"));
     }
     s.ammo[left] += s.ammo[gone];
     s.ammo[gone] = 0;
-    blocks.push({ t: "summary", text: `상태 변화: ${s.nameOf(left)}가 탄약을 모두 인수` });
+    blocks.push({ t: "summary", text: `상태 변화: ${s.nameSubj(left)} 탄약을 모두 인수` });
     return blocks;
   }
 
@@ -944,8 +1186,8 @@ export class Game {
       id: eid,
       type: e.type || "",
       typeLabel: TYPE_LABEL[e.type] || "엔딩",
-      title: e.title || "?",
-      text: e.text || [],
+      title: this.t(e.title || "?"),
+      text: this.names.renderAll(e.text || []),
       hidden: Boolean(e.hidden),
       route: e.route || "common",
       day: this.state.day,
@@ -1000,7 +1242,8 @@ export function codexSummary(content, collection) {
 }
 
 /** 루트별 목록. 미발견 숨김 엔딩은 제목을 가린다. */
-export function codexByRoute(content, collection) {
+export function codexByRoute(content, collection, names = null) {
+  const T = (x) => (names ? names.render(x) : x);
   const byRoute = new Map();
   for (const [eid, e] of Object.entries(content.endings)) {
     if (e.placeholder) continue;
@@ -1029,8 +1272,8 @@ export function codexByRoute(content, collection) {
           typeLabel: TYPE_LABEL[e.type] || "?",
           branch: e.branch || "",
           count: found ? collection[eid].count : 0,
-          title: found ? (e.title || "?") : (e.hidden ? "???" : "- 미발견 -"),
-          text: found ? (e.text || []) : [],
+          title: found ? T(e.title || "?") : (e.hidden ? "???" : "- 미발견 -"),
+          text: found ? (names ? names.renderAll(e.text || []) : (e.text || [])) : [],
         };
       }),
     });

@@ -32,6 +32,13 @@ def main(argv=None) -> int:
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
+    # 파이프로 입력을 넣을 때(테스트)는 stdin 도 utf-8 로 읽는다.
+    # 사람이 직접 치는 콘솔은 윈도가 알아서 유니코드로 주므로 건드리지 않는다.
+    try:
+        if not sys.stdin.isatty():
+            sys.stdin.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError, OSError):
+        pass
 
     args = parse_args(argv)
     data_dir = Path(args.data) if args.data else Path(__file__).parent / "data"
@@ -45,18 +52,24 @@ def main(argv=None) -> int:
     ui = UI(typewriter=not args.no_typewriter, speed=args.speed)
     game = Game(content, ui, seed=args.seed, debug=args.debug)
 
+    loaded = False
     if args.load:
         data = save.load_game()
         if data:
             game.state = GameState.from_dict(data["state"])
             game.rng = save.restore_rng(data)
             game.seed = data.get("seed")
+            game.refresh_names()
             print(f" 저장한 기록을 불러왔다. ({data.get('saved_at','?')})")
+            # 이름이 없는 옛 기록이면 이름을 먼저 묻는다.
+            if not game.ensure_names(data.get("state") or {}):
+                return 0
+            loaded = True
         else:
             print(" 불러올 기록이 없다. 처음부터 시작한다.")
 
     try:
-        game.run()
+        game.run(skip_setup=loaded)
     except KeyboardInterrupt:
         print("\n 중단했다.")
     except ContentError as e:

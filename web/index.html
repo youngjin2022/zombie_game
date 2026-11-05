@@ -28,11 +28,38 @@
   <div class="title-inner">
     <h1 class="title-h1">좀비 생존</h1>
     <p class="title-sub">아파트 7층 · 11월 28일 오후 3시 30분</p>
-    <div id="prologue" class="prologue"></div>
     <p id="title-codex" class="title-codex"></p>
+
+    <button id="btn-continue" class="btn big" hidden></button>
+
+    <!-- 모드 고르기 -->
+    <section class="setup" aria-labelledby="setup-mode-h">
+      <p id="setup-notice" class="warn" hidden></p>
+      <h2 id="setup-mode-h" class="setup-h">어떻게 할까</h2>
+      <div id="mode-list" class="mode-list" role="radiogroup" aria-labelledby="setup-mode-h"></div>
+
+      <!-- 이름 두 칸 -->
+      <div class="name-fields">
+        <div class="name-field">
+          <label id="lb-me" for="in-me">내 이름</label>
+          <input id="in-me" type="text" maxlength="10" autocomplete="off"
+                 spellcheck="false" enterkeyhint="next" placeholder="한글·영문·숫자 1~10자">
+          <p id="err-me" class="field-err" role="status"></p>
+        </div>
+        <div class="name-field">
+          <label id="lb-friend" for="in-friend">함께 생존할 사람의 이름</label>
+          <input id="in-friend" type="text" maxlength="10" autocomplete="off"
+                 spellcheck="false" enterkeyhint="go" placeholder="한글·영문·숫자 1~10자">
+          <p id="err-friend" class="field-err" role="status"></p>
+        </div>
+      </div>
+
+      <button id="btn-start" class="btn big primary" disabled>시작</button>
+    </section>
+
+    <div id="prologue" class="prologue"></div>
+
     <div class="title-buttons">
-      <button id="btn-continue" class="btn big" hidden></button>
-      <button id="btn-new" class="btn big primary">처음부터</button>
       <button id="btn-title-codex" class="btn">엔딩 도감</button>
       <button id="btn-title-load" class="btn">불러오기</button>
       <button id="btn-title-settings" class="btn">설정</button>

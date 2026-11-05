@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -434,6 +435,69 @@ def find_cycles(links: dict) -> list:
     return found
 
 
+# ---- 이름 토큰 검사 -------------------------------------------------
+
+# 시나리오 텍스트에 쓸 수 있는 이름 변수. engine/names.py 의 TOKEN_RE 와 같다.
+NAME_TOKEN_RE = re.compile(r"\{(me|friend)(!?)(?::([^}/]*)/([^}/]*))?\}")
+ANY_BRACE_RE = re.compile(r"\{[^{}]*\}")
+
+
+def all_texts(content):
+    """시나리오에 들어 있는 사람이 읽는 문자열을 전부 (위치, 문자열) 로 내놓는다."""
+    for iid, item in (content.items or {}).items():
+        yield f"아이템 {iid}.name", item.get("name", "")
+        yield f"아이템 {iid}.desc", item.get("desc", "")
+    for t in (content.start or {}).get("prologue", []) or []:
+        yield "start.prologue", t
+    for sid, scene in content.scenes.items():
+        yield f"{sid}.title", scene.get("title", "")
+        yield f"{sid}.location", scene.get("location", "")
+        for t in scene.get("intro", []) or []:
+            yield f"{sid}.intro", t
+        for t in scene.get("banter", []) or []:
+            yield f"{sid}.banter", t
+        yield f"{sid}.sc_line", scene.get("sc_line", "")
+        for v in scene.get("variants", []) or []:
+            for t in v.get("lines", []) or []:
+                yield f"{sid}.variants", t
+        for v in scene.get("sc_line_variants", []) or []:
+            yield f"{sid}.sc_line_variants", v.get("line", "")
+        for ch in scene.get("choices", []) or []:
+            cid = ch.get("id", sid)
+            yield f"{cid}.text", ch.get("text", "")
+            yield f"{cid}.unmet_label", ch.get("unmet_label", "")
+            for name, out in outcomes_of(ch):
+                for t in out.get("text", []) or []:
+                    yield f"{cid}/{name}", t
+                yield f"{cid}/{name}.twist", out.get("twist", "")
+    for eid, e in content.endings.items():
+        yield f"엔딩 {eid}.title", e.get("title", "")
+        for t in e.get("text", []) or []:
+            yield f"엔딩 {eid}", t
+
+
+def check_name_tokens(rep: Report, content) -> int:
+    """{me} / {friend} 변수의 모양을 본다.
+
+    오타(`{mee}`, `{me:은}`, `{me:은/는` 같은 것)는 치환되지 않고 화면에
+    중괄호째 그대로 나온다. 그래서 알 수 없는 중괄호는 전부 오류로 잡는다.
+    """
+    n = 0
+    for where, text in all_texts(content):
+        if not isinstance(text, str) or "{" not in text:
+            continue
+        for m in ANY_BRACE_RE.finditer(text):
+            whole = m.group(0)
+            if NAME_TOKEN_RE.fullmatch(whole):
+                n += 1
+                continue
+            rep.err(where, f"알 수 없는 이름 변수: {whole}")
+        # 짝이 맞지 않는 중괄호
+        if text.count("{") != text.count("}"):
+            rep.err(where, "중괄호 짝이 맞지 않는다")
+    return n
+
+
 def duplicate_lines(content, min_len: int = 14) -> list:
     """두 곳 이상에 똑같이 들어간 문장을 찾는다. 루트 간 결과 텍스트 재사용 점검용."""
     seen: dict = {}
@@ -753,6 +817,7 @@ def main(argv=None) -> int:
         return 1
 
     rep = validate(content, args.verbose)
+    tokens = check_name_tokens(rep, content)
     for line in stats_table(content, rep.route_moves):
         print(line)
     print()
@@ -786,6 +851,7 @@ def main(argv=None) -> int:
             print(line)
     print()
     print(f"장면 {len(content.scenes)}개 · 엔딩 {len(content.endings)}개 "
+          f"· 이름 변수 {tokens}개 "
           f"· 오류 {len(rep.errors)}개 · 경고 {len(rep.warns)}개")
     if not rep.errors:
         print("통과.")

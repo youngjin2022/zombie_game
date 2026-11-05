@@ -102,7 +102,9 @@ def main(argv=None) -> int:
     if eid in content.endings:
         e = content.endings[eid]
         extra = " · 숨겨진 엔딩" if e.get("hidden") else ""
-        print(f"엔딩: {eid} — {e.get('title')} [{e.get('type')}{extra}]")
+        from engine.names import Names
+        title = Names.from_state(state).render(e.get("title", "?"))
+        print(f"엔딩: {eid} — {title} [{e.get('type')}{extra}]")
     else:
         print(eid)
     return 0

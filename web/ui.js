@@ -8,6 +8,8 @@
 import {
   loadContent, Game, Rng, GameState,
   codexSummary, codexByRoute, TYPE_LABEL,
+  Names, checkName, checkPair, MODES, MODE_LABEL, MODE_DESC, MODE_READY,
+  nameLabels, SOLO,
 } from "./engine.js";
 
 import {
@@ -70,6 +72,9 @@ const routeName = (r) => ROUTE_NAME[r] || r;
 let content = null;
 let game = null;
 let settings = loadSettings();
+let setupMode = SOLO;                     // 시작 화면에서 고른 모드
+let pendingResume = null;                 // 이름이 없는 옛 저장. 이름을 받으면 이어 간다
+let names = new Names();                  // 화면에 쓸 이름 (도감 제목에도 쓴다)
 let pendingEnding = null;         // 결과 낭독이 끝나면 넘어갈 엔딩
 let revealQueue = [];
 let revealTimer = null;
@@ -119,10 +124,18 @@ function showBootError(e) {
 
 /* ===================== 시작 화면 ===================== */
 
-function showTitle() {
-  const pro = $("prologue");
-  clear(pro);
-  paragraphs(pro, content.start.prologue);
+function showTitle(notice = "") {
+  const note = $("setup-notice");
+  note.textContent = notice || "";
+  note.hidden = !notice;
+  if (!notice) pendingResume = null;
+
+  buildModeList();
+  const last = settings.names || { yj: "", sc: "" };
+  $("in-me").value = last.yj || "";
+  $("in-friend").value = last.sc || "";
+  setMode(pendingResume ? SOLO : (MODE_READY[settings.mode] ? settings.mode : SOLO));
+  $("btn-start").textContent = pendingResume ? "이어 하기" : "시작";
 
   const codex = loadCodex();
   const sum = codexSummary(content, codex);
@@ -132,8 +145,9 @@ function showTitle() {
   const btn = $("btn-continue");
   if (auto && !auto.meta?.ending) {
     const m = auto.meta || {};
+    const who = m.names ? `${m.names.yj}·${m.names.sc} · ` : "";
     btn.hidden = false;
-    btn.textContent = `이어 하기 — ${routeName(m.route || "common")} · `
+    btn.textContent = `이어 하기 — ${who}${routeName(m.route || "common")} · `
       + `${m.day || 1}일차 ${m.clock_text || ""}`.trim();
     btn.onclick = () => resume(auto, "이어서 한다.");
   } else {
@@ -153,6 +167,99 @@ function showTitle() {
   show("title");
 }
 
+/* ===================== 모드와 이름 ===================== */
+
+function buildModeList() {
+  const host = $("mode-list");
+  clear(host);
+  for (const m of MODES) {
+    const ready = Boolean(MODE_READY[m]);
+    const card = el("button", "mode-card" + (ready ? "" : " soon"));
+    card.type = "button";
+    card.dataset.mode = m;
+    card.setAttribute("role", "radio");
+    card.setAttribute("aria-checked", "false");
+    if (!ready) card.disabled = true;
+    const head = el("span", "mode-name", MODE_LABEL[m]);
+    if (!ready) head.appendChild(el("span", "badge", "준비 중"));
+    card.appendChild(head);
+    card.appendChild(el("span", "mode-desc", MODE_DESC[m]));
+    card.onclick = () => setMode(m);
+    host.appendChild(card);
+  }
+}
+
+function setMode(mode) {
+  setupMode = MODE_READY[mode] ? mode : SOLO;
+  for (const card of $("mode-list").children) {
+    const on = card.dataset.mode === setupMode;
+    card.classList.toggle("on", on);
+    card.setAttribute("aria-checked", on ? "true" : "false");
+  }
+  const [a, b] = nameLabels(setupMode);
+  $("lb-me").textContent = a;
+  $("lb-friend").textContent = b;
+  validateNames();
+}
+
+/** 두 칸을 보고 사유를 표시한다. 둘 다 유효할 때만 시작 버튼이 켜진다. */
+function validateNames() {
+  const rawMe = $("in-me").value;
+  const rawFriend = $("in-friend").value;
+  const r = checkPair(rawMe, rawFriend);
+
+  // 아직 아무것도 안 쓴 칸에는 사유를 띄우지 않는다 (처음 화면이 빨갛지 않게).
+  // 공백만 친 칸은 "안 쓴 칸" 이 아니므로 사유를 보여 준다.
+  const quietMe = rawMe === "";
+  const quietFriend = rawFriend === "";
+  setFieldError("me", quietMe ? "" : r.errors.me);
+  setFieldError("friend", quietFriend ? "" : r.errors.friend);
+
+  $("btn-start").disabled = !r.ok;
+  renderPrologue(r.ok ? r.names : {
+    yj: checkName(rawMe).ok ? r.names.yj : "",
+    sc: checkName(rawFriend).ok ? r.names.sc : "",
+  });
+  return r;
+}
+
+function setFieldError(which, msg) {
+  const box = $(`err-${which}`);
+  box.textContent = msg || "";
+  $(`in-${which}`).classList.toggle("bad", Boolean(msg));
+}
+
+/** 이름을 넣은 프롤로그. 아직 안 쓴 이름은 빈 자리로 둔다. */
+function renderPrologue(got) {
+  const n = new Names(got.yj || "□□", got.sc || "△△");
+  const pro = $("prologue");
+  clear(pro);
+  paragraphs(pro, n.renderAll(content.start.prologue));
+}
+
+function startFromSetup() {
+  const r = validateNames();
+  if (!r.ok) {
+    toast(r.errors.me || r.errors.friend || "이름을 확인해 주세요.");
+    return;
+  }
+  settings.mode = setupMode;
+  settings.names = { yj: r.names.yj, sc: r.names.sc };
+  saveSettings(settings);
+
+  // 이름이 없던 옛 저장이면 새 판이 아니라 그 기록을 이어 간다. (혼자 하기)
+  if (pendingResume) {
+    const payload = pendingResume;
+    pendingResume = null;
+    payload.state.names = { yj: r.names.yj, sc: r.names.sc };
+    payload.state.mode = SOLO;
+    resume(payload, "이름을 정했다. 이어서 한다.");
+    return;
+  }
+  clearAuto();
+  startNew({ mode: setupMode, names: r.names });
+}
+
 function codexLine(sum) {
   const d = ["true", "survival", "tragic", "gameover"]
     .map((t) => `${TYPE_LABEL[t]} ${sum.counts[t] || 0}`).join(", ");
@@ -161,10 +268,12 @@ function codexLine(sum) {
 
 /* ===================== 게임 시작 / 이어 하기 ===================== */
 
-function startNew() {
+function startNew(opts = null) {
+  const use = opts || { mode: settings.mode || SOLO, names: settings.names };
   game = new Game(content, { seed: null });
   pendingEnding = null;
-  const r = game.begin();
+  const r = game.begin(use);
+  names = game.names;
   show("play");
   if (r.ending) {
     renderStep(r.blocks, r.ending);
@@ -175,12 +284,20 @@ function startNew() {
 }
 
 function resume(payload, msg) {
+  // 이름이 없는 옛 저장: 이름 입력 화면을 먼저 보여 주고 혼자 하기로 이어 간다.
+  if (!payload.state || !payload.state.names || !payload.state.names.yj) {
+    pendingResume = payload;
+    showTitle("이 기록에는 이름이 없다. 이름을 먼저 정하면 그 자리에서 이어서 한다. (혼자 하기)");
+    $("in-me").focus();
+    return;
+  }
   game = new Game(content, {
     seed: payload.seed ?? null,
     rng: Rng.fromState(payload.rng),
     state: GameState.fromDict(payload.state),
   });
   pendingEnding = null;
+  names = game.names;
   show("play");
   renderStep(game.sceneBlocks(), null);
   if (msg) toast(msg);
@@ -202,8 +319,8 @@ function renderStatus() {
     c.appendChild(el("b", null, value));
     chips.appendChild(c);
   };
-  add("영진", v.hpYj, v.aliveYj ? hpCls(v.hpYjRatio) : "dead");
-  add("승철", v.hpSc, v.aliveSc ? hpCls(v.hpScRatio) : "dead");
+  add(game.state.nameOf("yj"), v.hpYj, v.aliveYj ? hpCls(v.hpYjRatio) : "dead");
+  add(game.state.nameOf("sc"), v.hpSc, v.aliveSc ? hpCls(v.hpScRatio) : "dead");
   add("허기", String(v.hunger), v.hunger >= 75 ? "crit" : v.hunger >= 55 ? "low" : "");
   add("체온", String(v.warmth), v.warmth <= 20 ? "crit" : v.warmth <= 40 ? "low" : "");
   add("물", `${v.water}ml`, v.water <= 0 ? "crit" : v.water < 400 ? "low" : "");
@@ -473,7 +590,8 @@ function openInventory() {
     const ul2 = el("ul", "inv-list");
     ul2.appendChild(el("li", null, `물 ${s.water}ml`));
     ul2.appendChild(el("li", null, `식량 ${s.food}끼니`));
-    ul2.appendChild(el("li", null, `탄약 — 영진 ${s.ammo.yj}발, 승철 ${s.ammo.sc}발`));
+    ul2.appendChild(el("li", null,
+      `탄약 — ${s.nameOf("yj")} ${s.ammo.yj}발, ${s.nameOf("sc")} ${s.ammo.sc}발`));
     g2.appendChild(ul2);
     body.appendChild(g2);
 
@@ -546,8 +664,11 @@ function slotCard({ n, name, data, mode, canSave }) {
     meta.appendChild(el("span", "broken", `읽을 수 없다 — ${data.error}`));
   } else {
     const m = data.meta || {};
+    const who = m.names ? `${m.names.yj}·${m.names.sc}` : null;
     const rows = [
       timeAgo(data.saved_at),
+      ...(who ? [who] : []),
+      ...(m.mode && m.mode !== "solo" ? [MODE_LABEL[m.mode] || m.mode] : []),
       routeName(m.route || data.state.route),
       `${m.day || data.state.day}일차 ${m.clock_text || ""}`.trim(),
       `생존 ${m.survivors ?? "?"}명`,
@@ -665,7 +786,7 @@ function openCodex() {
       "숨겨진 엔딩은 찾기 전까지 ??? 로 둔다. 찾은 엔딩은 눌러 다시 읽을 수 있다."));
     body.appendChild(head);
 
-    for (const group of codexByRoute(content, codex)) {
+    for (const group of codexByRoute(content, codex, names)) {
       const sec = el("div", "codex-route");
       const h = el("h3");
       h.appendChild(el("span", null, routeName(group.route)));
@@ -787,7 +908,7 @@ function confirmRestart() {
     yes.onclick = () => {
       clearAuto();
       closeSheet();
-      startNew();
+      showTitle();
     };
     const no = el("button", "btn", "그만두기");
     no.type = "button";
@@ -801,7 +922,18 @@ function confirmRestart() {
 /* ===================== 입력 연결 ===================== */
 
 function wire() {
-  $("btn-new").onclick = () => { clearAuto(); startNew(); };
+  $("btn-start").onclick = startFromSetup;
+  for (const which of ["me", "friend"]) {
+    const input = $(`in-${which}`);
+    input.addEventListener("input", validateNames);
+    input.addEventListener("blur", validateNames);
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (which === "me") $("in-friend").focus();
+      else startFromSetup();
+    });
+  }
   $("btn-title-codex").onclick = openCodex;
   $("btn-title-load").onclick = () => openSlots("load");
   $("btn-title-settings").onclick = openSettings;
@@ -812,7 +944,7 @@ function wire() {
     if (e.target === $("overlay")) closeSheet();
   });
 
-  $("btn-end-restart").onclick = startNew;
+  $("btn-end-restart").onclick = showTitle;
   $("btn-end-codex").onclick = openCodex;
 
   // 본문을 누르면 남은 줄을 전부 보여 준다.

@@ -3,32 +3,32 @@
  "minified": false,
  "files": {
   "common.json": {
-   "bytes": 41634,
-   "sha256_12": "07a5513b2b8d"
+   "bytes": 41788,
+   "sha256_12": "63218ca5709a"
   },
   "route_school.json": {
-   "bytes": 229496,
-   "sha256_12": "a19998d52c5e"
+   "bytes": 224143,
+   "sha256_12": "63c8541de4f8"
   },
   "route_mart.json": {
-   "bytes": 214549,
-   "sha256_12": "f3af53809205"
+   "bytes": 211304,
+   "sha256_12": "f8905d9633ac"
   },
   "route_temple.json": {
-   "bytes": 297685,
-   "sha256_12": "abe05bf77ae8"
+   "bytes": 291122,
+   "sha256_12": "edc500ee40ef"
   },
   "route_rooftop.json": {
-   "bytes": 311175,
-   "sha256_12": "dade11d8282e"
+   "bytes": 304138,
+   "sha256_12": "0cfb16b184a1"
   },
   "route_police.json": {
-   "bytes": 312394,
-   "sha256_12": "be1508cb3a17"
+   "bytes": 305674,
+   "sha256_12": "767b35cb2a46"
   },
   "endings.json": {
-   "bytes": 96734,
-   "sha256_12": "3f5fb7a2a230"
+   "bytes": 95446,
+   "sha256_12": "edebc807e2c1"
   }
  }
 }
