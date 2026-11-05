@@ -1,0 +1,18 @@
+# 줄 끝은 저장소와 작업 폴더 양쪽에서 LF 로 통일한다.
+#
+# 윈도에서 CRLF 로 바뀌면 sync_web_data.py --check 가 data/ 와 web/data/ 를
+# 바이트로 비교할 때 운영체제마다 결과가 갈릴 수 있다. 그래서 못 박아 둔다.
+* text=auto eol=lf
+
+# 이진 파일은 건드리지 않는다.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+*.mp3 binary
+*.ogg binary

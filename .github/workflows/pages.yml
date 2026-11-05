@@ -1,0 +1,68 @@
+# web/ 폴더를 GitHub Pages 사이트 루트로 배포한다.
+#
+# 올라가는 주소: https://<사용자>.github.io/<저장소>/
+#   -> web/index.html 이 그 주소의 첫 화면이 된다.
+#
+# 저장소 Settings -> Pages -> Source 를 **"GitHub Actions"** 로 두어야 돈다.
+# ("Deploy from a branch" 로 두면 이 워크플로의 결과가 쓰이지 않는다)
+#
+# 배포 전에 검사를 먼저 돌린다. 검사가 깨지면 배포하지 않는다.
+
+name: GitHub Pages 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # Actions 탭에서 손으로도 돌릴 수 있다
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 한 번에 하나만. 진행 중인 배포를 끊지는 않는다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 시나리오 검사 (정적 + 전체 분기 순회)
+        run: python validate.py --walk --max-reps 20
+
+      - name: web/data 가 data 와 같은지
+        run: python sync_web_data.py --check
+
+      - name: 두 엔진 대조 (파이썬 = JS)
+        run: |
+          python parity.py
+          node web/tools/parity.mjs
+
+  deploy:
+    name: 배포
+    needs: check
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      - name: web/ 를 사이트 루트로 올린다
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
