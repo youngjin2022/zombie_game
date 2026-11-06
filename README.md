@@ -250,8 +250,9 @@ python parity.py && node web/tools/parity.mjs # 둘이 경로 40개까지 같이
 4. **빌드 → Authentication → Sign-in method → 익명** 을 사용 설정.
 5. **Realtime Database → 규칙** 탭에 [`database.rules.json`](database.rules.json) 의
    내용을 통째로 붙여 넣고 **게시**.
-6. **Authentication → Settings → 승인된 도메인** 에 사이트 주소
-   (예: `youngjin2022.github.io`)를 추가한다. `localhost` 는 기본으로 들어 있다.
+6. 익명 로그인은 **승인된 도메인과 상관없이 된다**(확인했다: `localhost` 와
+   `youngjin2022.github.io` 둘 다 바로 로그인된다). 나중에 구글 로그인 같은 것을
+   붙이면 그때 **Authentication → Settings → 승인된 도메인** 에 주소를 넣는다.
 
 ### 보안 규칙이 막는 것 (`database.rules.json`)
 

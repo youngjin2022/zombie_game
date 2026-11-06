@@ -1607,7 +1607,7 @@ web/engine.js            같은 두 줄
 잠금 모드 그대로라 아직 쓰기가 전부 막혀 있다. localhost 에서 확인한 것:
 
 ```
-익명 로그인      성공 (uid 발급됨, isAnonymous = true)
+익명 로그인      성공 (localhost 와 youngjin2022.github.io 둘 다. uid 발급됨)
 CDN SDK          성공 (10.12.5 ES 모듈)
 방 만들기        PERMISSION_DENIED
                  → 화면에 "데이터베이스 규칙이 막았다…" 로 바르게 뜬다
@@ -1624,8 +1624,7 @@ CDN SDK          성공 (10.12.5 ES 모듈)
 
 1. **Firebase 콘솔 → Realtime Database → 규칙** 에 `database.rules.json` 을 붙여 넣고
    **게시**한다. 지금은 잠금 모드라 쓰기가 전부 막혀 있다.
-2. **Authentication → Settings → 승인된 도메인** 에 `youngjin2022.github.io` 를 추가한다.
-3. 그다음 **두 창으로 처음부터 엔딩까지** 확인한다 — 선택 일치/불일치, 상의,
+2. 그다음 **두 창으로 처음부터 엔딩까지** 확인한다 — 선택 일치/불일치, 상의,
    시간 초과, 입장 승인과 거절, 방 잠금, 끊김 후 복귀.
 
 아래는 그 전부터 남아 있던 것들이다 (급하지 않다).
