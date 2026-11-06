@@ -35,10 +35,12 @@ REQ_KEYS = {
     "night", "max_time", "min_time",
 }
 SCENE_KEYS = {
-    "stage", "branch", "title", "location", "indoors", "intro", "variants",
+    "stage", "branch", "title", "lead", "location", "indoors", "intro", "variants",
     "sc_line", "sc_line_variants", "banter", "on_enter", "choices",
     "placeholder", "_route", "_id",
 }
+# 둘이 고르는 모드의 주도권자. 전투·이동은 "me", 분석·협상·정찰은 "friend".
+LEAD_VALUES = {"me", "friend"}
 ENDING_KEYS = {"type", "route", "branch", "title", "text", "hidden", "placeholder", "_id"}
 OUTCOME_KEYS = {"text", "twist", "effects", "next", "ending", "ending_pick", "route_move"}
 PEOPLE = {"yj", "sc"}
@@ -186,6 +188,11 @@ def validate(content, verbose: bool = False) -> Report:
                 rep.err(where, f"알 수 없는 장면 키: {k}")
         if "stage" not in scene:
             rep.warn(where, "stage가 없다")
+        lead = scene.get("lead")
+        if lead is None:
+            rep.err(where, "lead 가 없다 (둘이 모드의 주도권자: \"me\" 또는 \"friend\")")
+        elif lead not in LEAD_VALUES:
+            rep.err(where, f"lead 값이 이상하다: {lead!r} (\"me\" 또는 \"friend\")")
         check_text(rep, where, scene.get("intro"), "intro")
         if not placeholder and not scene.get("sc_line") and not scene.get("sc_line_variants"):
             rep.warn(where, "동행의 분석 한 줄(sc_line)이 없다")
@@ -900,7 +907,9 @@ def main(argv=None) -> int:
         for line in rep.warns:
             print(line)
     print()
-    print(f"장면 {len(content.scenes)}개 · 엔딩 {len(content.endings)}개 "
+    n_me = sum(1 for sc in content.scenes.values() if sc.get("lead") != "friend")
+    print(f"장면 {len(content.scenes)}개 (주도권 {{me}} {n_me} · {{friend}} "
+          f"{len(content.scenes) - n_me}) · 엔딩 {len(content.endings)}개 "
           f"· 이름 변수 {tokens}개 "
           f"· 오류 {len(rep.errors)}개 · 경고 {len(rep.warns)}개")
     if not rep.errors:

@@ -32,6 +32,7 @@
       "stage": 4,
       "branch": "",
       "title": "101동 로비 — 올라가는 길은 하나",
+      "lead": "me",
       "location": "25층 주거동 로비",
       "indoors": true,
       "intro": [
@@ -299,6 +300,7 @@
       "stage": 5,
       "branch": "lower",
       "title": "11층에서 18층까지 — 올라갈 수 없는 사람들",
+      "lead": "friend",
       "location": "101동 11층 복도",
       "indoors": true,
       "intro": [
@@ -667,6 +669,7 @@
       "stage": 5,
       "branch": "upper",
       "title": "19층에서 25층까지 — 물이 먼저 끊기는 쪽",
+      "lead": "friend",
       "location": "101동 19층 복도",
       "indoors": true,
       "intro": [
@@ -972,6 +975,7 @@
       "stage": 5,
       "branch": "shaft",
       "title": "통로 안 — 양쪽 다 모르는 길",
+      "lead": "friend",
       "location": "101동 승강기 통로",
       "indoors": true,
       "intro": [
@@ -1233,6 +1237,7 @@
       "stage": 6,
       "branch": "lower",
       "title": "남의 집 문 — 아래가 쥐고 있는 것",
+      "lead": "me",
       "location": "101동 11층에서 지하까지",
       "indoors": true,
       "on_enter": {
@@ -1613,6 +1618,7 @@
       "stage": 6,
       "branch": "upper",
       "title": "쉰 층 왕복 — 위가 치르는 값",
+      "lead": "friend",
       "location": "101동 19층에서 1층까지",
       "indoors": true,
       "on_enter": {
@@ -2000,6 +2006,7 @@
       "stage": 6,
       "branch": "shaft",
       "title": "수직으로 옮긴다 — 계단을 쓰지 않는 길",
+      "lead": "me",
       "location": "101동 승강기 통로와 권상기실",
       "indoors": true,
       "on_enter": {
@@ -2377,6 +2384,7 @@
       "stage": 7,
       "branch": "",
       "title": "밤을 넘기고 — 마흔다섯 명과 한 동",
+      "lead": "friend",
       "location": "101동 15층 복도",
       "indoors": true,
       "intro": [
@@ -2684,6 +2692,7 @@
       "stage": 8,
       "branch": "merge",
       "title": "한 동으로 쓴다 — 층을 다시 배치한다",
+      "lead": "friend",
       "location": "101동 11층에서 25층",
       "indoors": true,
       "intro": [
@@ -2960,6 +2969,7 @@
       "stage": 9,
       "branch": "merge",
       "title": "유리가 깨지는 밤",
+      "lead": "me",
       "location": "101동 1층에서 19층",
       "indoors": true,
       "intro": [
@@ -3344,6 +3354,7 @@
       "stage": 10,
       "branch": "merge",
       "title": "최종 결단 — 이 건물을 쓸 것인가",
+      "lead": "me",
       "location": "101동 15층 복도",
       "indoors": true,
       "on_enter": {
@@ -3949,6 +3960,7 @@
       "stage": 8,
       "branch": "split",
       "title": "선을 그은 다음 — 네 줄과 안 쓴 한 줄",
+      "lead": "friend",
       "location": "101동 15층 발판과 19층 방화문",
       "indoors": true,
       "intro": [
@@ -4324,6 +4336,7 @@
       "stage": 9,
       "branch": "split",
       "title": "한쪽만 밀리는 밤",
+      "lead": "me",
       "location": "101동 4층과 15층 발판",
       "indoors": true,
       "intro": [
@@ -4734,6 +4747,7 @@
       "stage": 10,
       "branch": "split",
       "title": "최종 결단 — 선을 지울 것인가",
+      "lead": "friend",
       "location": "101동 15층 발판",
       "indoors": true,
       "on_enter": {
@@ -5225,6 +5239,7 @@
       "stage": 8,
       "branch": "down",
       "title": "나가기로 정한 뒤 — 열세 층을 내려가는 계산",
+      "lead": "me",
       "location": "101동 11층과 지하 2층",
       "indoors": true,
       "intro": [
@@ -5592,6 +5607,7 @@
       "stage": 9,
       "branch": "down",
       "title": "나가기 전날 밤",
+      "lead": "me",
       "location": "101동 11층",
       "indoors": true,
       "intro": [
@@ -5971,6 +5987,7 @@
       "stage": 10,
       "branch": "down",
       "title": "최종 결단 — 램프를 나갈 것인가",
+      "lead": "me",
       "location": "101동 지하 2층 램프",
       "indoors": true,
       "on_enter": {
@@ -6596,6 +6613,7 @@
       "stage": 9,
       "branch": "",
       "title": "무전으로 부른 쪽 — 25층 옥상층",
+      "lead": "friend",
       "location": "101동 로비",
       "indoors": true,
       "intro": [
@@ -6890,6 +6908,7 @@
       "stage": 10,
       "branch": "",
       "title": "최종 결단 — 아흔 몇 명과 계단 하나",
+      "lead": "friend",
       "location": "101동 19층 복도",
       "indoors": true,
       "on_enter": {

@@ -99,9 +99,12 @@ class UI:
                     print(f"   강점 {c['strength']} · 약점 {c.get('weakness','?')}")
         print(RULE)
 
-    def help(self) -> None:
+    def help(self, two_player: bool = False) -> None:
         print()
-        print(" 1~5 = 선택   " + "   ".join(f"{k}={v}" for k, v in COMMANDS.items()))
+        cmds = dict(COMMANDS)
+        if two_player:
+            cmds["p"] = "비공개 선택"
+        print(" 1~5 = 선택   " + "   ".join(f"{k}={v}" for k, v in cmds.items()))
 
     def choices(self, options: list) -> None:
         """options: [(번호, 텍스트, 사용가능?, 미달라벨)]"""

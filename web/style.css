@@ -507,3 +507,82 @@ button { font: inherit; color: inherit; }
   .toast { animation: none; }
   .btn { transition: none; }
 }
+
+/* ===================== 둘이 고르기 (같은 화면 2인 모드) ===================== */
+
+:root {
+  --p1: #c8a24a;            /* 플레이어 1 = {me}. 등불 색 */
+  --p2: #6fa0b8;            /* 플레이어 2 = {friend}. 찬 색 */
+}
+
+.ptag {
+  display: inline-block;
+  min-width: 1.6rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-weight: 700;
+  text-align: center;
+  color: var(--bg);
+  background: var(--p1);
+}
+.ptag.p2 { background: var(--p2); }
+
+.duo-head {
+  max-width: var(--maxw);
+  margin: 0 auto 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  border-left: 3px solid var(--p1);
+}
+.duo-head.p2 { border-left-color: var(--p2); }
+.duo-who { font-weight: 700; }
+.duo-note { color: var(--ink-3); font-size: 0.85em; }
+
+.choice.picked { border-color: var(--p1); }
+.choice .ptag { margin-left: auto; align-self: center; }
+
+.duo-line {
+  color: var(--ink-2);
+  font-size: 0.9em;
+  border-left: 3px solid var(--line-2);
+  padding-left: 0.6rem;
+  margin: 0.4rem 0;
+}
+
+.talk {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.talk-h { margin: 0 0 0.6rem; font-size: 1em; color: var(--accent); }
+.talk-row {
+  padding: 0.4rem 0 0.5rem 0.6rem;
+  border-left: 3px solid var(--p1);
+  margin-bottom: 0.5rem;
+}
+.talk-row.p2 { border-left-color: var(--p2); }
+.talk-top { display: flex; gap: 0.45rem; align-items: baseline; flex-wrap: wrap; }
+.talk-name { font-weight: 700; }
+.talk-txt { line-height: 1.5; }
+.talk-risk { margin: 0.2rem 0 0; color: var(--ink-2); font-size: 0.88em; }
+.talk-lead { margin: 0.2rem 0 0.6rem; color: var(--ink-3); font-size: 0.88em; }
+.talk-buttons { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.talk-buttons .btn { flex: 1 1 10rem; }
+.talk-timer { margin: 0.6rem 0 0; color: var(--warm); font-size: 0.88em; }
+
+.end-duo { margin: 0.4rem 0 0.8rem; color: var(--ink-2); font-size: 0.9em; }
+.end-duo p { margin: 0.15rem 0; }
+
+@media (max-width: 480px) {
+  .talk-buttons .btn { flex: 1 1 100%; }
+}

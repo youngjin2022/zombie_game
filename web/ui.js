@@ -9,7 +9,9 @@ import {
   loadContent, Game, Rng, GameState,
   codexSummary, codexByRoute, TYPE_LABEL,
   Names, checkName, checkPair, MODES, MODE_LABEL, MODE_DESC, MODE_READY,
-  nameLabels, SOLO,
+  nameLabels, SOLO, isTwoPlayer,
+  DuoTurn, settle, agreeRate, KIND_LABEL, TEAMWORK_DELTA,
+  TALK, LEAD, COIN, MAX_REPICK,
 } from "./engine.js";
 
 import {
@@ -17,7 +19,7 @@ import {
   loadCodex, recordEnding,
   writeAuto, readAuto, clearAuto,
   writeSlot, readSlot, clearSlot, slotList, SLOTS,
-  exportCode, importCode, validatePayload,
+  exportCode, importCode, validatePayload, TALK_LIMITS,
 } from "./storage.js";
 
 /* ===================== 작은 도구 ===================== */
@@ -76,6 +78,13 @@ let setupMode = SOLO;                     // 시작 화면에서 고른 모드
 let pendingResume = null;                 // 이름이 없는 옛 저장. 이름을 받으면 이어 간다
 let names = new Names();                  // 화면에 쓸 이름 (도감 제목에도 쓴다)
 let pendingEnding = null;         // 결과 낭독이 끝나면 넘어갈 엔딩
+
+// 둘이 고르는 판 (local2). 장면 하나가 한 판이다.
+let duoTurn = null;               // engine.js 의 DuoTurn
+let duoPhase = "p1";              // "p1" | "p2" | "talk"
+let duoPicks = { p1: null, p2: null };
+let talkTimer = null;             // 상의 제한 시간
+let talkLeft = 0;
 let revealQueue = [];
 let revealTimer = null;
 
@@ -272,6 +281,7 @@ function startNew(opts = null) {
   const use = opts || { mode: settings.mode || SOLO, names: settings.names };
   game = new Game(content, { seed: null });
   pendingEnding = null;
+  resetDuo();
   const r = game.begin(use);
   names = game.names;
   show("play");
@@ -297,6 +307,7 @@ function resume(payload, msg) {
     state: GameState.fromDict(payload.state),
   });
   pendingEnding = null;
+  resetDuo();
   names = game.names;
   show("play");
   renderStep(game.sceneBlocks(), null);
@@ -327,6 +338,10 @@ function renderStatus() {
   add("식량", `${v.food}끼니`, v.food <= 0 ? "low" : "");
   add("탄약", `${v.ammoYj}/${v.ammoSc}`, v.ammoYj + v.ammoSc <= 0 ? "low" : "");
   add("소음", String(v.noise), v.noise >= 70 ? "crit" : v.noise >= 45 ? "low" : "");
+  if (twoPlayer()) {
+    const tw = game.state.teamwork;
+    add("팀워크", String(tw), tw <= 25 ? "crit" : tw <= 40 ? "low" : "");
+  }
 
   const extra = $("st-extra");
   clear(extra);
@@ -388,6 +403,7 @@ function blockNode(b) {
     case "twist": return el("p", "twist", b.text);
     case "event": return el("p", "event", b.text);
     case "summary": return el("p", "summary", b.text);
+    case "duo": return el("p", "duo-line", b.text);
     case "sep": return el("div", "sep");
     case "line":
     default:
@@ -433,12 +449,28 @@ const revealing = () => revealQueue.length > 0 || revealTimer !== null;
 
 /* ===================== 선택지 ===================== */
 
+const twoPlayer = () => Boolean(game) && isTwoPlayer(game.state.mode);
+
+function resetDuo() {
+  stopTalkTimer();
+  duoTurn = null;
+  duoPhase = "p1";
+  duoPicks = { p1: null, p2: null };
+}
+
 function renderChoices() {
   const foot = $("choices");
+  stopTalkTimer();
   clear(foot);
   foot.classList.remove("disabled");
   if (pendingEnding) { showEndingButton(); return; }
+  if (twoPlayer()) { renderDuo(foot); return; }
 
+  foot.appendChild(choiceList((c) => () => choose(c.index)));
+}
+
+/** 선택지 버튼 목록. pick(c) 가 그 버튼의 onclick 을 돌려준다. */
+function choiceList(pick, mark = null) {
   const list = el("div", "choice-list");
   for (const c of game.choices()) {
     const b = el("button", "choice" + (c.ok ? "" : " locked"));
@@ -450,11 +482,178 @@ function renderChoices() {
       b.disabled = true;
       b.setAttribute("aria-disabled", "true");
     } else {
-      b.onclick = () => choose(c.index);
+      b.onclick = pick(c);
+    }
+    const m = mark ? mark(c) : null;
+    if (m) {
+      b.appendChild(m);
+      b.classList.add("picked");
     }
     list.appendChild(b);
   }
-  foot.appendChild(list);
+  return list;
+}
+
+/* ===================== 둘이 고르기 (local2) ===================== */
+
+function playerName(who) {
+  return game.state.nameOf(who === 1 ? "yj" : "sc");
+}
+
+function playerTag(who, text) {
+  return el("span", `ptag p${who}`, text || `P${who}`);
+}
+
+function newDuoTurn() {
+  duoTurn = new DuoTurn(game.c.scene(game.state.scene));
+  duoPhase = "p1";
+  duoPicks = { p1: null, p2: null };
+}
+
+function renderDuo(foot) {
+  if (!duoTurn) newDuoTurn();
+  if (duoPhase === "talk") { renderTalk(foot); return; }
+
+  const who = duoPhase === "p1" ? 1 : 2;
+  const head = el("div", `duo-head p${who}`);
+  head.appendChild(playerTag(who));
+  head.appendChild(el("span", "duo-who", `${playerName(who)} 차례`));
+  if (duoTurn.repicks) {
+    head.appendChild(el("span", "duo-note",
+      `다시 고르기 ${duoTurn.repicks}/${MAX_REPICK}회째`));
+  }
+  if (who === 2 && duoPicks.p1 !== null) {
+    head.appendChild(el("span", "duo-note", settings.privatePicks
+      ? `${playerName(1)} 선택 완료 (가려 둔다)`
+      : `${playerName(1)} 고름`));
+  }
+  foot.appendChild(head);
+
+  const showP1 = who === 2 && !settings.privatePicks && duoPicks.p1 !== null;
+  foot.appendChild(choiceList(
+    (c) => () => pickDuo(who, c.index + 1),
+    (c) => (showP1 && c.index + 1 === duoPicks.p1 ? playerTag(1) : null),
+  ));
+}
+
+function pickDuo(who, index) {
+  if (revealing()) { finishReveal(); return; }
+  if (who === 1) {
+    duoPicks.p1 = index;
+    duoPhase = "p2";
+    renderChoices();
+    return;
+  }
+  duoPicks.p2 = index;
+  const kind = duoTurn.submit(duoPicks.p1, duoPicks.p2);
+  if (kind === TALK) {
+    // 다시 고르기를 다 썼는데 또 다르면 주도권자 결정으로 넘어간다.
+    if (!duoTurn.canRepick()) { decideTalk(LEAD); return; }
+    duoPhase = "talk";
+    renderChoices();
+    return;
+  }
+  finishDuo(kind, duoPicks.p1);
+}
+
+/** 한 판이 끝났다. 팀워크를 올리고 그 선택을 실제로 고른다. */
+function finishDuo(kind, index) {
+  stopTalkTimer();
+  const before = game.state.teamwork;
+  const after = settle(game.state, kind);
+  const picks = `${playerName(1)} [${duoPicks.p1}] · ${playerName(2)} [${duoPicks.p2}]`;
+  const extra = kind === LEAD
+    ? ` — 주도권자 ${game.leadOf().name}의 [${index}]`
+    : kind === COIN ? ` — 동전이 고른 것은 [${index}]` : "";
+  const sign = after - before > 0 ? "+" : "";
+  const note = {
+    t: "duo",
+    text: `${picks} → ${KIND_LABEL[kind]}${extra}. 팀워크 ${sign}${after - before} → ${after}`,
+  };
+  duoTurn = null;
+  duoPhase = "p1";
+  choose(index - 1, [note]);
+}
+
+function renderTalk(foot) {
+  const box = el("div", "talk");
+  box.appendChild(el("h3", "talk-h", "상의 — 두 사람이 다르게 골랐다"));
+
+  const all = game.choices();
+  for (const [who, idx] of [[1, duoPicks.p1], [2, duoPicks.p2]]) {
+    const row = el("div", `talk-row p${who}`);
+    const top = el("div", "talk-top");
+    top.appendChild(playerTag(who));
+    top.appendChild(el("span", "talk-name", playerName(who)));
+    top.appendChild(el("span", "talk-txt", `[${idx}] ${all[idx - 1].text}`));
+    row.appendChild(top);
+    row.appendChild(el("p", "talk-risk", game.riskOf(idx - 1).text));
+    box.appendChild(row);
+  }
+
+  const lead = game.leadOf();
+  box.appendChild(el("p", "talk-lead",
+    `이 장면의 주도권자: ${lead.name} (플레이어 ${lead.player})`));
+
+  const row = el("div", "talk-buttons");
+  const btn = (label, cls, fn, disabled) => {
+    const b = el("button", "btn " + cls, label);
+    b.type = "button";
+    b.disabled = Boolean(disabled);
+    b.onclick = fn;
+    row.appendChild(b);
+  };
+  btn(duoTurn.canRepick()
+    ? `다시 고르기 (남은 ${MAX_REPICK - duoTurn.repicks}회)`
+    : "다시 고르기 (다 썼다)",
+  "", () => {
+    stopTalkTimer();
+    duoTurn.repick();
+    duoPicks = { p1: null, p2: null };
+    duoPhase = "p1";
+    renderChoices();
+  }, !duoTurn.canRepick());
+  btn("주도권자가 정한다", "primary", () => decideTalk(LEAD));
+  btn("동전을 던진다", "", () => decideTalk(COIN));
+  box.appendChild(row);
+
+  if (settings.talkLimit) {
+    const t = el("p", "talk-timer");
+    t.id = "talk-timer";
+    box.appendChild(t);
+  }
+  foot.appendChild(box);
+  if (settings.talkLimit) startTalkTimer();
+}
+
+function decideTalk(how) {
+  const r = duoTurn.decide(how, game.rng);
+  finishDuo(r.kind, r.index);
+}
+
+function startTalkTimer() {
+  stopTalkTimer();
+  talkLeft = settings.talkLimit;
+  const tick = () => {
+    const node = $("talk-timer");
+    if (!node) { stopTalkTimer(); return; }
+    node.textContent = talkLeft > 0
+      ? `남은 시간 ${talkLeft}초 — 다 되면 주도권자가 정한다.`
+      : "시간이 다 됐다.";
+    if (talkLeft <= 0) {
+      stopTalkTimer();
+      decideTalk(LEAD);
+      return;
+    }
+    talkLeft -= 1;
+    talkTimer = setTimeout(tick, 1000);
+  };
+  tick();
+}
+
+function stopTalkTimer() {
+  if (talkTimer !== null) clearTimeout(talkTimer);
+  talkTimer = null;
 }
 
 function showEndingButton() {
@@ -469,7 +668,7 @@ function showEndingButton() {
   foot.appendChild(list);
 }
 
-function choose(index) {
+function choose(index, before = []) {
   if (revealing()) { finishReveal(); return; }
   if (pendingEnding) return;
   let r;
@@ -479,7 +678,7 @@ function choose(index) {
     toast(String((e && e.message) || e));
     return;
   }
-  const blocks = [{ t: "sep" }].concat(r.blocks);
+  const blocks = [{ t: "sep" }].concat(before, r.blocks);
   if (!r.ending) {
     renderStep(blocks.concat(game.sceneBlocks()), null);
     writeAuto(game);              // 선택할 때마다 자동 저장
@@ -503,6 +702,18 @@ function finishEnding(eid) {
   paragraphs(text, v.text);
   $("end-stats").textContent = `생존 시간 ${v.day}일차 ${v.clockText} · 선택 ${v.picks}회`
     + ` · ${routeName(v.route)}`;
+  const dv = game.duoView();
+  const dnode = $("end-duo");
+  clear(dnode);
+  dnode.hidden = !dv;
+  if (dv) {
+    dnode.appendChild(el("p", null,
+      `둘이 고른 판 ${dv.rounds}회 · 합의율 ${dv.rate}% (같은 선택 ${dv.same}회)`));
+    dnode.appendChild(el("p", null,
+      `상의 ${dv.talks}회 · 다시 골라 합의 ${dv.repick}회`
+      + ` · 주도권자 결정 ${dv.lead}회 · 동전 ${dv.coin}회`));
+    dnode.appendChild(el("p", null, `팀워크 ${dv.teamwork}`));
+  }
   const nw = $("end-new");
   if (rec.first) {
     nw.hidden = false;
@@ -858,6 +1069,30 @@ function openSettings() {
     }
     speed.appendChild(seg);
     body.appendChild(speed);
+
+    if (twoPlayer()) {
+      body.appendChild(segField("비공개 선택", [
+        ["켜기", true], ["끄기", false],
+      ], settings.privatePicks, (v) => {
+        settings.privatePicks = v;
+        saveSettings(settings);
+        openSettings();
+        if (duoPhase === "p2") renderChoices();
+      }));
+      body.appendChild(el("p", "hint",
+        "켜면 한 사람이 고르는 동안 다른 사람의 선택을 화면에 띄우지 않는다."));
+
+      body.appendChild(segField("상의 제한 시간", [
+        ["끄기", 0], ["30초", 30], ["60초", 60],
+      ], settings.talkLimit, (v) => {
+        settings.talkLimit = v;
+        saveSettings(settings);
+        openSettings();
+        if (duoPhase === "talk") renderChoices();
+      }));
+      body.appendChild(el("p", "hint",
+        "시간이 다 되면 주도권자가 정한 것으로 넘어간다."));
+    }
 
     body.appendChild(segField("글자 크기", [
       ["작게", "s"], ["보통", "m"], ["크게", "l"],

@@ -9,6 +9,7 @@
   python simulate.py --route police       # 4단계에서 그 루트만 고른다
   python simulate.py --rare 0.5           # 드문 엔딩 기준(%) 변경
   python simulate.py --paths end_police_safe   # 그 엔딩이 나온 선택 순서를 보여 준다
+  python simulate.py --duo                # 같은 화면 2인 모드 (둘이 따로 무작위로 고른다)
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from engine import ContentError, load
-from engine import conditions, effects
+from engine import conditions, duo, effects, modes
 from engine.game import FALLBACK_ENDING
 from engine.rng import Rng
 from engine.state import GameState
@@ -70,9 +71,35 @@ def enter(state, content, sid: str) -> str | None:
     return gameover_ending(state)
 
 
-def one_run(content, rng: "Rng", force_route: str | None = None) -> dict:
+def duo_pick(state, scene: dict, opts: list, rng: "Rng"):
+    """둘이 모드 한 판. 두 사람이 각자 무작위로 고르고, 다르면 무작위로 상의를 끝낸다.
+
+    engine/game.py 의 `prompt_duo` 와 같은 규칙을 쓴다(engine/duo.py).
+    """
+    turn = duo.Turn(scene)
+    while True:
+        p1 = rng.below(len(opts)) + 1
+        p2 = rng.below(len(opts)) + 1
+        kind = turn.submit(p1, p2)
+        if kind != duo.TALK:
+            duo.settle(state, kind)
+            return opts[p1 - 1]
+        if turn.can_repick() and rng.random() < 0.5:
+            turn.repick()
+            continue
+        # 다시 고르기를 다 썼으면 주도권자 결정으로 넘어간다.
+        how = duo.LEAD if (not turn.can_repick() or rng.random() < 0.5) else duo.COIN
+        index, kind = turn.decide(how, rng)
+        duo.settle(state, kind)
+        return opts[index - 1]
+
+
+def one_run(content, rng: "Rng", force_route: str | None = None,
+            duo_mode: bool = False) -> dict:
     """한 판을 끝까지 돌리고 결과를 돌려준다."""
     state = new_state(content)
+    if duo_mode:
+        state.mode = modes.LOCAL2
     picked_route = None
     ending = enter(state, content, state.scene)
 
@@ -100,7 +127,7 @@ def one_run(content, rng: "Rng", force_route: str | None = None) -> dict:
             if want:
                 opts = want
 
-        ch = rng.choice(opts)
+        ch = duo_pick(state, scene, opts, rng) if duo_mode else rng.choice(opts)
         state.history.append(ch.get("id", "?"))
 
         if "check" in ch:
@@ -148,6 +175,8 @@ def one_run(content, rng: "Rng", force_route: str | None = None) -> dict:
         "picks": len(state.history),
         "history": list(state.history),
         "alive": sum(1 for p in ("yj", "sc") if state.alive[p]),
+        "teamwork": state.teamwork,
+        "duo": dict(state.duo),
         "state": state,
     }
 
@@ -197,6 +226,18 @@ def report(content, runs: list, rare_pct: float) -> int:
     print(f"   둘 다 사망      {pct(none, len(ok))}")
     print(f"   게임 오버       {pct(types.get('gameover', 0), len(ok))}"
           f"  (엔진 폴백 {pct(sum(fallback.values()), len(ok))})")
+    if any(r.get("duo", {}).get("rounds") for r in ok):
+        n = sum(r["duo"]["rounds"] for r in ok)
+        same = sum(r["duo"]["same"] for r in ok)
+        print(f"   둘이 고른 판    {n:,}회 · 합의율 {pct(same, n)}"
+              f" · 상의 {sum(r['duo']['talks'] for r in ok):,}회"
+              f" (다시 골라 합의 {sum(r['duo']['repick'] for r in ok):,}"
+              f" · 주도권자 {sum(r['duo']['lead'] for r in ok):,}"
+              f" · 동전 {sum(r['duo']['coin'] for r in ok):,})")
+        print(f"   팀워크 평균     "
+              f"{sum(r['teamwork'] for r in ok) / len(ok):.1f}"
+              f"  (최저 {min(r['teamwork'] for r in ok)}"
+              f" · 최고 {max(r['teamwork'] for r in ok)})")
     for eid, n in fallback.most_common():
         print(f"     {eid:24s} {pct(n, len(ok))}")
     print("   엔딩 종류별     " + "  ".join(
@@ -328,6 +369,8 @@ def parse_args(argv=None):
                    help="드문 엔딩으로 볼 비율 하한(소속 루트 안에서의 %%, 기본 1.0)")
     p.add_argument("--paths", nargs="*", default=None,
                    help="그 엔딩이 나온 선택 순서를 trace.py 명령으로 출력")
+    p.add_argument("--duo", action="store_true",
+                   help="같은 화면 2인 모드로 돌린다 (둘이 따로 고르고 무작위로 상의)")
     p.add_argument("--data", default=None, help="시나리오 폴더 (기본: 프로젝트의 data)")
     return p.parse_args(argv)
 
@@ -349,7 +392,7 @@ def main(argv=None) -> int:
         return 1
 
     rng = Rng(args.seed)
-    runs = [one_run(content, rng, args.route) for _ in range(args.runs)]
+    runs = [one_run(content, rng, args.route, args.duo) for _ in range(args.runs)]
     code = report(content, runs, args.rare)
     if args.paths is not None:
         wanted = args.paths or [e for e in content.endings

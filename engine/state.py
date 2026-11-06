@@ -85,6 +85,18 @@ class GameState:
     names: dict = field(default_factory=lambda: {"yj": "영진", "sc": "승철"})
     mode: str = "solo"                  # solo / local2 / online
 
+    # 둘이 하는 모드의 호흡. 0~100, 시작 50. 판정 확률에 ±5%까지 반영된다.
+    # 혼자 하기에서는 50 에서 움직이지 않고 판정에도 영향이 없다 (engine/duo.py).
+    teamwork: int = 50
+    duo: dict = field(default_factory=lambda: {
+        "rounds": 0,    # 둘이 고른 판 수
+        "same": 0,      # 바로 같은 선택이 나온 판
+        "talks": 0,     # 상의까지 간 판
+        "repick": 0,    # 다시 골라서 맞춘 판
+        "lead": 0,      # 주도권자가 정한 판
+        "coin": 0,      # 동전으로 정한 판
+    })
+
     scene: str = ""
     route: str = "common"
     starve_min: float = 0.0

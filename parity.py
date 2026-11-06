@@ -14,7 +14,11 @@
   python parity.py                       # 대표 경로 100개 -> web/tools/parity_python.json
   python parity.py -n 200                # 자유 경로 개수 변경
   python parity.py --per-route 20        # 루트마다 강제 경로 개수 변경
+  python parity.py --duo 20              # 같은 화면 2인 모드 경로 개수 변경
   node web/tools/parity.mjs              # JS 쪽에서 돌려 대조한다
+
+둘이 모드(`local2`) 경로는 선택을 **두 번** 뽑고, 다르면 상의까지 난수로 끝낸다.
+그래서 팀워크·주도권자·동전과 그것이 판정 확률에 주는 ±5% 까지 같이 대조된다.
 """
 from __future__ import annotations
 
@@ -24,7 +28,7 @@ import sys
 from pathlib import Path
 
 from engine import ContentError, load
-from engine import conditions, effects
+from engine import conditions, duo, effects, modes
 from engine.game import FALLBACK_ENDING
 from engine.rng import Rng
 from engine.state import GameState
@@ -126,11 +130,56 @@ def adds_item(ch: dict, items: list) -> bool:
     return False
 
 
-def one_run(content, seed: int, force_route: str | None = None) -> dict:
+# 둘이 모드 대조에 쓰는 이름 조합. 받침 있음/없음/ㄹ/영문/숫자/세 글자를 섞는다.
+DUO_NAMES = [
+    {"yj": "영진", "sc": "승철"},
+    {"yj": "김영진", "sc": "하늘"},
+    {"yj": "Mike", "sc": "유저1"},
+    {"yj": "민수", "sc": "남궁민수"},
+]
+
+
+def duo_run(state, scene: dict, opts: list, rng: "Rng", step: dict):
+    """둘이 모드 한 판. 두 선택을 뽑고, 다르면 상의까지 난수로 끝낸다.
+
+    **web/tools/parity.mjs 의 duoRun 과 한 글자도 다르면 안 된다.**
+    `engine/duo.py` 의 규칙(합의 +3 / 다시 골라 합의 +1 / 주도권자 -2 / 동전 -1,
+    다시 고르기 최대 2회, 다 쓰면 주도권자 결정)을 그대로 쓴다.
+    """
+    turn = duo.Turn(scene)
+    picks: list = []
+    while True:
+        p1 = rng.below(len(opts)) + 1
+        p2 = rng.below(len(opts)) + 1
+        picks.append([p1, p2])
+        kind = turn.submit(p1, p2)
+        if kind != duo.TALK:
+            duo.settle(state, kind)
+            step["picks"] = picks
+            step["duo_kind"] = kind
+            step["duo_index"] = p1
+            return opts[p1 - 1]
+        if turn.can_repick() and rng.random() < 0.5:
+            turn.repick()
+            continue
+        how = duo.LEAD if (not turn.can_repick() or rng.random() < 0.5) else duo.COIN
+        index, kind = turn.decide(how, rng)
+        duo.settle(state, kind)
+        step["picks"] = picks
+        step["duo_kind"] = kind
+        step["duo_index"] = index
+        return opts[index - 1]
+
+
+def one_run(content, seed: int, force_route: str | None = None,
+            mode: str = modes.SOLO, names: dict | None = None) -> dict:
     """한 판을 끝까지 돌리고 걸음마다의 기록을 돌려준다."""
     rng = Rng(seed)
     gates = gate_items(content, force_route) if force_route else []
     state = new_state(content)
+    state.mode = mode
+    if names:
+        state.names = dict(names)
     steps: list = []
 
     first = enter(state, content, state.scene)
@@ -150,8 +199,9 @@ def one_run(content, seed: int, force_route: str | None = None) -> dict:
         checks = [conditions.meets(state, ch.get("requires"), content) for ch in all_choices]
         opts = [ch for ch, (ok, _) in zip(all_choices, checks) if ok]
         if not opts:
-            return {"seed": seed, "force_route": force_route, "steps": steps,
-                    "ending": None, "error": f"{state.scene}: 고를 수 있는 선택지가 없다"}
+            return {"seed": seed, "force_route": force_route, "mode": mode,
+                    "names": names, "steps": steps, "ending": None,
+                    "error": f"{state.scene}: 고를 수 있는 선택지가 없다"}
 
         step = {
             "scene": state.scene,
@@ -181,7 +231,10 @@ def one_run(content, seed: int, force_route: str | None = None) -> dict:
                 opts = want
                 step["forced"] = [ch.get("id", "?") for ch in opts]
 
-        ch = rng.choice(opts)
+        if modes.is_two_player(state.mode):
+            ch = duo_run(state, scene, opts, rng, step)
+        else:
+            ch = rng.choice(opts)
         state.history.append(ch.get("id", "?"))
         step["choice"] = ch.get("id", "?")
 
@@ -217,8 +270,9 @@ def one_run(content, seed: int, force_route: str | None = None) -> dict:
             if not nxt:
                 step["state"] = dump_state(state)
                 steps.append(step)
-                return {"seed": seed, "force_route": force_route, "steps": steps,
-                        "ending": None, "error": f"{ch.get('id')}: next 도 ending 도 없다"}
+                return {"seed": seed, "force_route": force_route, "mode": mode,
+                        "names": names, "steps": steps, "ending": None,
+                        "error": f"{ch.get('id')}: next 도 ending 도 없다"}
             r = enter(state, content, nxt)
             step["enter_events"] = r["events"]
             ending = r["ending"]
@@ -226,19 +280,22 @@ def one_run(content, seed: int, force_route: str | None = None) -> dict:
         step["state"] = dump_state(state)
         steps.append(step)
 
-    return {"seed": seed, "force_route": force_route, "steps": steps,
-            "ending": ending, "error": None}
+    return {"seed": seed, "force_route": force_route, "mode": mode,
+            "names": names, "steps": steps, "ending": ending, "error": None}
 
 
-def build(content, free: int, per_route: int) -> dict:
+def build(content, free: int, per_route: int, duo_runs: int) -> dict:
     runs = []
     for seed in range(1, free + 1):
         runs.append(one_run(content, seed))
     for r, route in enumerate(ROUTES):
         for i in range(per_route):
             runs.append(one_run(content, 100000 + r * 1000 + i, route))
+    for i in range(duo_runs):
+        runs.append(one_run(content, 200000 + i, None, modes.LOCAL2,
+                            DUO_NAMES[i % len(DUO_NAMES)]))
     return {
-        "format": 1,
+        "format": 2,
         "engine": "python",
         "runs": runs,
     }
@@ -256,7 +313,9 @@ def report(payload: dict) -> int:
         routes[last["route"]] = routes.get(last["route"], 0) + 1
         if r.get("ending"):
             endings.add(r["ending"])
-    print(f" 경로 {len(runs)}개 · 선택 {steps}회 · 도달 엔딩 {len(endings)}종")
+    n_duo = sum(1 for r in runs if r.get("mode") == modes.LOCAL2)
+    print(f" 경로 {len(runs)}개 (혼자 {len(runs) - n_duo} · 둘이 {n_duo})"
+          f" · 선택 {steps}회 · 도달 엔딩 {len(endings)}종")
     print("  루트별: " + ", ".join(f"{k} {v}" for k, v in sorted(routes.items())))
     if bad:
         print(f" [오류] 끝나지 않은 경로 {len(bad)}개")
@@ -276,6 +335,8 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="파이썬/JS 대조용 경로 기록 생성")
     p.add_argument("-n", "--free", type=int, default=50, help="자유 경로 개수 (기본 50)")
     p.add_argument("--per-route", type=int, default=10, help="루트마다 강제할 경로 개수 (기본 10)")
+    p.add_argument("--duo", type=int, default=40,
+                   help="같은 화면 2인 모드 경로 개수 (기본 40)")
     p.add_argument("--out", default=None, help=f"출력 파일 (기본 {OUT_DEFAULT})")
     p.add_argument("--stdout", action="store_true", help="파일 대신 표준 출력으로")
     p.add_argument("--data", default=None, help="시나리오 폴더")
@@ -288,7 +349,7 @@ def main(argv=None) -> int:
         print(f"시나리오를 읽지 못했다: {e}")
         return 1
 
-    payload = build(content, args.free, args.per_route)
+    payload = build(content, args.free, args.per_route, args.duo)
     text = json.dumps(payload, ensure_ascii=False)
 
     if args.stdout:

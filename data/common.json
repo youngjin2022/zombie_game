@@ -46,6 +46,7 @@
     "c1_home": {
       "stage": 1,
       "title": "아파트 7층, {me}의 집",
+      "lead": "friend",
       "location": "아파트 7층 자택",
       "indoors": true,
       "intro": [
@@ -171,6 +172,7 @@
     "c2_floor": {
       "stage": 1,
       "title": "7층에서 1층까지",
+      "lead": "me",
       "location": "아파트 7층 복도",
       "indoors": true,
       "intro": [
@@ -438,6 +440,7 @@
     "c3_gate": {
       "stage": 2,
       "title": "단지 밖 첫 판단",
+      "lead": "me",
       "location": "아파트 단지 1층",
       "indoors": false,
       "intro": [
@@ -677,6 +680,7 @@
     "c4_base": {
       "stage": 3,
       "title": "오늘 밤을 어디서 보내는가",
+      "lead": "me",
       "location": "단지 밖 교차로",
       "indoors": false,
       "intro": [

@@ -17,6 +17,7 @@ import {
   meets, roll, pickEnding, probability,
   applyEffects, snapshot, summary,
   FALLBACK_ENDING, STATE_FIELDS,
+  DuoTurn, settle, TALK, LEAD, COIN, isTwoPlayer, SOLO,
 } from "../engine.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -116,10 +117,42 @@ function addsItem(ch, items) {
   return false;
 }
 
-function oneRun(content, seed, forceRoute = null) {
+/** 둘이 모드 한 판. **parity.py 의 duo_run 과 한 글자도 다르면 안 된다.** */
+function duoRun(state, scene, opts, rng, step) {
+  const turn = new DuoTurn(scene);
+  const picks = [];
+  for (;;) {
+    const p1 = rng.below(opts.length) + 1;
+    const p2 = rng.below(opts.length) + 1;
+    picks.push([p1, p2]);
+    const kind = turn.submit(p1, p2);
+    if (kind !== TALK) {
+      settle(state, kind);
+      step.picks = picks;
+      step.duo_kind = kind;
+      step.duo_index = p1;
+      return opts[p1 - 1];
+    }
+    if (turn.canRepick() && rng.random() < 0.5) {
+      turn.repick();
+      continue;
+    }
+    const how = (!turn.canRepick() || rng.random() < 0.5) ? LEAD : COIN;
+    const r = turn.decide(how, rng);
+    settle(state, r.kind);
+    step.picks = picks;
+    step.duo_kind = r.kind;
+    step.duo_index = r.index;
+    return opts[r.index - 1];
+  }
+}
+
+function oneRun(content, seed, forceRoute = null, mode = SOLO, names = null) {
   const rng = new Rng(seed);
   const gates = forceRoute ? gateItems(content, forceRoute) : [];
   const state = newState(content);
+  state.mode = mode;
+  if (names) state.names = { ...names };
   const steps = [];
 
   const first = enter(state, content, state.scene);
@@ -138,7 +171,7 @@ function oneRun(content, seed, forceRoute = null) {
     const checks = allChoices.map((ch) => meets(state, ch.requires, content));
     let opts = allChoices.filter((ch, i) => checks[i].ok);
     if (!opts.length) {
-      return { seed, force_route: forceRoute, steps, ending: null,
+      return { seed, force_route: forceRoute, mode, names, steps, ending: null,
         error: `${state.scene}: 고를 수 있는 선택지가 없다` };
     }
 
@@ -171,7 +204,9 @@ function oneRun(content, seed, forceRoute = null) {
       }
     }
 
-    const ch = rng.choice(opts);
+    const ch = isTwoPlayer(state.mode)
+      ? duoRun(state, scene, opts, rng, step)
+      : rng.choice(opts);
     state.history.push(ch.id || "?");
     step.choice = ch.id || "?";
 
@@ -210,7 +245,7 @@ function oneRun(content, seed, forceRoute = null) {
       if (!nxt) {
         step.state = dumpState(state);
         steps.push(step);
-        return { seed, force_route: forceRoute, steps, ending: null,
+        return { seed, force_route: forceRoute, mode, names, steps, ending: null,
           error: `${ch.id}: next 도 ending 도 없다` };
       }
       const r = enter(state, content, nxt);
@@ -222,7 +257,7 @@ function oneRun(content, seed, forceRoute = null) {
     steps.push(step);
   }
 
-  return { seed, force_route: forceRoute, steps, ending, error: null };
+  return { seed, force_route: forceRoute, mode, names, steps, ending, error: null };
 }
 
 /* ---------- 구조 비교 ----------
@@ -284,7 +319,8 @@ function main() {
   const failures = [];
 
   for (const want of expect.runs) {
-    const got = oneRun(content, want.seed, want.force_route || null);
+    const got = oneRun(content, want.seed, want.force_route || null,
+      want.mode || SOLO, want.names || null);
     const problems = diff(want, got, `seed ${want.seed}`, [], verbose ? 20 : 4);
     stepsChecked += want.steps.length - 1;
     const last = want.steps[want.steps.length - 1].state;
@@ -301,8 +337,10 @@ function main() {
 
   const routeLine = [...routes.entries()].sort()
     .map(([k, v]) => `${k} ${v}`).join(", ");
-  console.log(` 대조한 경로 ${expect.runs.length}개 · 선택 ${stepsChecked}회`
-    + ` · 도달 엔딩 ${endings.size}종`);
+  const nDuo = expect.runs.filter((r) => isTwoPlayer(r.mode || SOLO)).length;
+  console.log(` 대조한 경로 ${expect.runs.length}개`
+    + ` (혼자 ${expect.runs.length - nDuo} · 둘이 ${nDuo})`
+    + ` · 선택 ${stepsChecked}회 · 도달 엔딩 ${endings.size}종`);
   console.log(`  루트별: ${routeLine}\n`);
 
   if (!badRuns) {

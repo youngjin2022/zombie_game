@@ -36,6 +36,7 @@
       "stage": 4,
       "branch": "",
       "title": "등산로 입구 — 여기서부터 2킬로미터",
+      "lead": "me",
       "location": "등산로 입구 주차장",
       "indoors": false,
       "intro": [
@@ -277,6 +278,7 @@
       "stage": 5,
       "branch": "trail",
       "title": "백운사 마당 — 종을 치는 사람",
+      "lead": "friend",
       "location": "백운사 앞마당",
       "indoors": false,
       "intro": [
@@ -598,6 +600,7 @@
       "stage": 5,
       "branch": "valley",
       "title": "절 뒤편 — 물이 끊긴 쪽",
+      "lead": "friend",
       "location": "백운사 뒤 계곡과 산신각",
       "indoors": false,
       "intro": [
@@ -964,6 +967,7 @@
       "stage": 5,
       "branch": "road",
       "title": "임도 끝 — 짐이 올라오는 쪽",
+      "lead": "me",
       "location": "백운사 아래 임도 종점",
       "indoors": false,
       "intro": [
@@ -1287,6 +1291,7 @@
       "stage": 6,
       "branch": "trail",
       "title": "요사채 큰방 — 열여덟이라는 숫자",
+      "lead": "friend",
       "location": "백운사 요사채",
       "indoors": true,
       "on_enter": {
@@ -1637,6 +1642,7 @@
       "stage": 6,
       "branch": "valley",
       "title": "공양간 — 하루 한 번 끓이는 솥",
+      "lead": "friend",
       "location": "백운사 공양간",
       "indoors": true,
       "on_enter": {
@@ -1949,6 +1955,7 @@
       "stage": 6,
       "branch": "road",
       "title": "장작간 — 열린 길을 잠글 것인가",
+      "lead": "me",
       "location": "백운사 장작간",
       "indoors": true,
       "on_enter": {
@@ -2273,6 +2280,7 @@
       "stage": 7,
       "branch": "",
       "title": "밤을 넘기고 — 이 산을 무엇으로 쓸 것인가",
+      "lead": "friend",
       "location": "백운사 대웅전",
       "indoors": true,
       "intro": [
@@ -2566,6 +2574,7 @@
       "stage": 8,
       "branch": "fire",
       "title": "불을 산 대가 — 연기는 숨지 않는다",
+      "lead": "me",
       "location": "백운사 마당과 장작간",
       "indoors": false,
       "intro": [
@@ -2952,6 +2961,7 @@
       "stage": 9,
       "branch": "fire",
       "title": "불을 끄지 않는 밤",
+      "lead": "me",
       "location": "백운사 요사채와 아궁이",
       "indoors": true,
       "intro": [
@@ -3345,6 +3355,7 @@
       "stage": 10,
       "branch": "fire",
       "title": "최종 결단 — 불을 어디까지 쓸 것인가",
+      "lead": "me",
       "location": "백운사 마당",
       "indoors": true,
       "on_enter": {
@@ -3832,6 +3843,7 @@
       "stage": 8,
       "branch": "bell",
       "title": "종이 부른 사람들 — 스물넷이 된 절",
+      "lead": "friend",
       "location": "백운사 일주문과 대웅전",
       "indoors": false,
       "intro": [
@@ -4222,6 +4234,7 @@
       "stage": 9,
       "branch": "bell",
       "title": "스물넷이 자는 밤",
+      "lead": "me",
       "location": "백운사 대웅전과 가건물",
       "indoors": true,
       "intro": [
@@ -4619,6 +4632,7 @@
       "stage": 10,
       "branch": "bell",
       "title": "최종 결단 — 종을 계속 칠 것인가",
+      "lead": "me",
       "location": "백운사 범종각",
       "indoors": true,
       "on_enter": {
@@ -5060,6 +5074,7 @@
       "stage": 8,
       "branch": "cave",
       "title": "숨는다는 것 — 다섯 자리와 남는 사람들",
+      "lead": "friend",
       "location": "산신각 뒤 석굴",
       "indoors": false,
       "intro": [
@@ -5369,6 +5384,7 @@
       "stage": 9,
       "branch": "cave",
       "title": "소리를 내지 않는 밤",
+      "lead": "me",
       "location": "산신각 뒤 석굴",
       "indoors": true,
       "intro": [
@@ -5750,6 +5766,7 @@
       "stage": 10,
       "branch": "cave",
       "title": "최종 결단 — 바위 안에 있을 것인가",
+      "lead": "me",
       "location": "산신각 뒤 석굴 입구",
       "indoors": true,
       "on_enter": {
@@ -6228,6 +6245,7 @@
       "stage": 9,
       "branch": "",
       "title": "산으로 — 거점을 버리고 올라온 줄",
+      "lead": "friend",
       "location": "등산로 중턱",
       "indoors": false,
       "intro": [
@@ -6552,6 +6570,7 @@
       "stage": 10,
       "branch": "",
       "title": "최종 결단 — 쉰 몇 명과 산 하나",
+      "lead": "friend",
       "location": "백운사 마당",
       "indoors": true,
       "on_enter": {

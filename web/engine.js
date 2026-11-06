@@ -267,6 +267,122 @@ export function nameLabels(mode) {
   return MODE_NAME_LABEL[mode] || MODE_NAME_LABEL[SOLO];
 }
 
+/* =====================================================================
+ * 3b. 둘이 고르는 판 (engine/duo.py)
+ *
+ * engine/duo.py 와 **한 쌍이다. 한쪽만 고치면 안 된다.**
+ * parity.mjs 가 팀워크·주도권·동전까지 대조한다.
+ * ===================================================================== */
+
+export const LEAD_ME = "yj";
+export const LEAD_FRIEND = "sc";
+
+export const AGREE = "agree";    // 두 선택이 같았다
+export const REPICK = "repick";  // 다시 골라서 맞췄다
+export const LEAD = "lead";      // 주도권자가 정했다
+export const COIN = "coin";      // 동전을 던졌다
+export const TALK = "talk";      // 아직 안 끝났다. 상의 화면으로 간다
+
+export const KIND_LABEL = {
+  [AGREE]: "같은 선택",
+  [REPICK]: "다시 골라 합의",
+  [LEAD]: "주도권자 결정",
+  [COIN]: "동전 던지기",
+};
+
+export const TEAMWORK_DELTA = { [AGREE]: 3, [REPICK]: 1, [LEAD]: -2, [COIN]: -1 };
+export const TEAMWORK_START = 50;
+export const TEAMWORK_SPAN = 0.05;   // 판정 확률에 더해지는 최대치 (±5%)
+export const MAX_REPICK = 2;
+
+export const DUO_KEYS = ["rounds", "same", "talks", "repick", "lead", "coin"];
+
+export function newDuoStats() {
+  const out = {};
+  for (const k of DUO_KEYS) out[k] = 0;
+  return out;
+}
+
+/** 장면의 주도권자. 전투·이동은 {me}, 분석·협상·정찰은 {friend}. */
+export function sceneLead(scene) {
+  return (scene || {}).lead === "friend" ? LEAD_FRIEND : LEAD_ME;
+}
+
+/** 주도권자가 플레이어 1({me})인지 2({friend})인지. */
+export function leadPlayer(scene) {
+  return sceneLead(scene) === LEAD_ME ? 1 : 2;
+}
+
+/** 게임 시드 기반 동전. 1이면 플레이어 1의 선택, 2면 플레이어 2의 선택. */
+export function coin(rng) {
+  return rng.random() < 0.5 ? 1 : 2;
+}
+
+/** 판정 확률에 더할 값. 혼자 하기 모드는 0.0 이다. */
+export function teamworkMod(state) {
+  if (!isTwoPlayer(state.mode || SOLO)) return 0.0;
+  const tw = state.teamwork === undefined ? TEAMWORK_START : state.teamwork;
+  return (tw - TEAMWORK_START) / 50.0 * TEAMWORK_SPAN;
+}
+
+/** 한 판이 끝났다. 팀워크와 통계를 갱신하고 바뀐 팀워크를 돌려준다. */
+export function settle(state, kind) {
+  const d = state.duo;
+  for (const k of DUO_KEYS) if (d[k] === undefined) d[k] = 0;
+  d.rounds += 1;
+  if (kind === AGREE) {
+    d.same += 1;
+  } else {
+    d.talks += 1;
+    d[kind] += 1;
+  }
+  state.teamwork = Math.max(0, Math.min(100, state.teamwork + TEAMWORK_DELTA[kind]));
+  return state.teamwork;
+}
+
+/** 합의율 — 상의 없이 바로 맞은 비율. 판이 없으면 0.0. */
+export function agreeRate(state) {
+  const d = state.duo || {};
+  const n = d.rounds || 0;
+  return n ? (d.same || 0) / n : 0.0;
+}
+
+/** 한 장면에서 둘이 고르는 한 판. 화면과 대조 테스트가 같이 쓴다. */
+export class DuoTurn {
+  constructor(scene) {
+    this.scene = scene;
+    this.repicks = 0;
+    this.p1 = null;
+    this.p2 = null;
+  }
+
+  /** 두 선택을 낸다. AGREE / REPICK / TALK 중 하나. */
+  submit(p1, p2) {
+    this.p1 = p1;
+    this.p2 = p2;
+    if (p1 === p2) return this.repicks === 0 ? AGREE : REPICK;
+    return TALK;
+  }
+
+  canRepick() { return this.repicks < MAX_REPICK; }
+
+  repick() {
+    this.repicks += 1;
+    this.p1 = null;
+    this.p2 = null;
+  }
+
+  /** 상의를 끝낸다. { index, kind }. */
+  decide(how, rng) {
+    if (how === COIN) {
+      const who = coin(rng);
+      return { index: who === 1 ? this.p1 : this.p2, kind: COIN };
+    }
+    const who = leadPlayer(this.scene);
+    return { index: who === 1 ? this.p1 : this.p2, kind: LEAD };
+  }
+}
+
 export const ERR_EMPTY = "이름을 입력해 주세요.";
 export const ERR_LONG = `이름은 ${NAME_MAX}자까지예요.`;
 export const ERR_CHARS = "한글, 영문, 숫자만 쓸 수 있어요.";
@@ -350,7 +466,7 @@ export const STATE_FIELDS = [
   "hunger", "warmth", "water", "food", "ammo", "noise",
   "indoors", "location", "yj_combat", "sc_aim", "sc_judgment",
   "items", "companions", "flags", "history",
-  "names", "mode",
+  "names", "mode", "teamwork", "duo",
   "scene", "route", "starve_min", "meal_min", "death_cause",
 ];
 
@@ -391,6 +507,11 @@ export class GameState {
     // 기본값은 도구(parity.mjs)와 이름 없는 옛 저장을 위한 것이다.
     this.names = { yj: "영진", sc: "승철" };
     this.mode = "solo";                 // solo / local2 / online
+
+    // 둘이 하는 모드의 호흡. 0~100, 시작 50. 판정 확률에 ±5%까지 반영된다.
+    // 혼자 하기에서는 50 에서 움직이지 않고 판정에도 영향이 없다.
+    this.teamwork = TEAMWORK_START;
+    this.duo = newDuoStats();
 
     this.scene = "";
     this.route = "common";
@@ -746,6 +867,8 @@ export function meets(state, req, content) {
 }
 
 /** p = base + Σ weight×(stat−center) + Σ bonus, min~max 로 자른다. */
+/** p = base + Σ weight×(stat−center) + Σ bonus + 팀워크, min~max 로 자른다.
+ *  팀워크는 둘이 하는 모드에서만, ±5% 안에서만 움직인다. */
 export function probability(state, check) {
   let p = Number(check.base !== undefined ? check.base : 0.5);
   for (const m of check.mods || []) {
@@ -759,6 +882,7 @@ export function probability(state, check) {
       p += state.companion(m.companion) ? (m.bonus || 0.0) : 0.0;
     }
   }
+  p += teamworkMod(state);
   const lo = Number(check.min !== undefined ? check.min : 0.05);
   const hi = Number(check.max !== undefined ? check.max : 0.95);
   return Math.max(lo, Math.min(hi, p));
@@ -1181,6 +1305,38 @@ export class Game {
   }
 
   /** 엔딩 화면용 자료. */
+  /** 지금 장면의 선택지 하나가 얼마나 위험한가. 상의 화면에서 쓴다. */
+  riskOf(index) {
+    const scene = this.c.scene(this.state.scene);
+    const ch = (scene.choices || [])[index];
+    if (!ch || !ch.check) return { p: null, text: "판정 없음 — 결과가 갈리지 않는다." };
+    const p = probability(this.state, ch.check);
+    const word = p >= 0.8 ? "해 볼 만하다"
+      : p >= 0.6 ? "반반보다는 낫다"
+      : p >= 0.4 ? "반반이다" : "위험하다";
+    return { p, text: `예상 성공 ${Math.round(p * 100)}% — ${word}` };
+  }
+
+  /** 지금 장면의 주도권자. { pid, player, name }. */
+  leadOf() {
+    const scene = this.c.scene(this.state.scene);
+    const pid = sceneLead(scene);
+    return { pid, player: leadPlayer(scene), name: this.state.nameOf(pid) };
+  }
+
+  /** 엔딩 화면의 둘이 모드 통계. 혼자 하기면 null. */
+  duoView() {
+    if (!isTwoPlayer(this.state.mode)) return null;
+    const d = this.state.duo || {};
+    if (!d.rounds) return null;
+    return {
+      rounds: d.rounds, same: d.same, talks: d.talks,
+      repick: d.repick, lead: d.lead, coin: d.coin,
+      rate: Math.round(agreeRate(this.state) * 100),
+      teamwork: this.state.teamwork,
+    };
+  }
+
   endingView(eid = this.ending) {
     const e = this.c.ending(eid);
     return {

@@ -1,6 +1,7 @@
 """조건식(requires) 판정과 확률 계산."""
 from __future__ import annotations
 
+from . import duo
 from . import state as st
 from .rng import Rng
 
@@ -117,7 +118,11 @@ def meets(state: "st.GameState", req: dict | None, content=None) -> tuple:
 
 
 def probability(state: "st.GameState", check: dict) -> float:
-    """p = base + Σ weight×(stat−center) + Σ bonus, min~max로 자른다."""
+    """p = base + Σ weight×(stat−center) + Σ bonus + 팀워크, min~max로 자른다.
+
+    팀워크는 둘이 하는 모드에서만, 그것도 ±5% 안에서만 움직인다.
+    혼자 하기는 `duo.teamwork_mod` 가 0.0 을 돌려주므로 수치가 전과 같다.
+    """
     p = float(check.get("base", 0.5))
     for mod in check.get("mods", []):
         if "stat" in mod:
@@ -128,6 +133,7 @@ def probability(state: "st.GameState", check: dict) -> float:
             p += mod.get("bonus", 0.0) if mod["flag"] in state.flags else 0.0
         elif "companion" in mod:
             p += mod.get("bonus", 0.0) if state.companion(mod["companion"]) else 0.0
+    p += duo.teamwork_mod(state)
     return max(float(check.get("min", 0.05)), min(float(check.get("max", 0.95)), p))
 
 

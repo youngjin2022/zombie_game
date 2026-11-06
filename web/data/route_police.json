@@ -32,6 +32,7 @@
       "stage": 4,
       "branch": "",
       "title": "강변 경찰서 — 문은 열려 있다",
+      "lead": "friend",
       "location": "강변경찰서 정문",
       "indoors": false,
       "intro": [
@@ -281,6 +282,7 @@
       "stage": 5,
       "branch": "hall",
       "title": "민원실 — 열쇠가 없는 창고 앞",
+      "lead": "friend",
       "location": "강변경찰서 1층 민원실",
       "indoors": true,
       "intro": [
@@ -583,6 +585,7 @@
       "stage": 5,
       "branch": "armory",
       "title": "이중 잠금 — 열쇠가 둘로 나뉘어 있다",
+      "lead": "friend",
       "location": "강변경찰서 2층 상황실",
       "indoors": true,
       "intro": [
@@ -938,6 +941,7 @@
       "stage": 5,
       "branch": "levee",
       "title": "하천 둔치 — 집결지라고 불리는 외야",
+      "lead": "friend",
       "location": "강변 하천 둔치 야구장",
       "indoors": false,
       "intro": [
@@ -1240,6 +1244,7 @@
       "stage": 6,
       "branch": "hall",
       "title": "민원실 — 백 몇 명이라는 숫자",
+      "lead": "friend",
       "location": "강변경찰서 1층 민원실 · 강당",
       "indoors": true,
       "intro": [
@@ -1561,6 +1566,7 @@
       "stage": 6,
       "branch": "armory",
       "title": "무기탄약고 — 열쇠가 아니라 허락이 없다",
+      "lead": "me",
       "location": "강변경찰서 2층 무기탄약고 앞",
       "indoors": true,
       "intro": [
@@ -1967,6 +1973,7 @@
       "stage": 6,
       "branch": "levee",
       "title": "둔치 — 12월 1일 15시까지 하루",
+      "lead": "me",
       "location": "강변 하천 둔치 · 천막 안",
       "indoors": true,
       "intro": [
@@ -2295,6 +2302,7 @@
       "stage": 7,
       "branch": "",
       "title": "12월 1일 아침 — 정할 사람을 정한다",
+      "lead": "friend",
       "location": "강변경찰서 2층 상황실",
       "indoors": true,
       "intro": [
@@ -2587,6 +2595,7 @@
       "stage": 8,
       "branch": "badge",
       "title": "지침이 일과가 되는 낮",
+      "lead": "friend",
       "location": "강변경찰서 1층 민원실 · 정문",
       "indoors": true,
       "intro": [
@@ -2921,6 +2930,7 @@
       "stage": 9,
       "branch": "badge",
       "title": "지침이 처음 시험받는 밤",
+      "lead": "me",
       "location": "강변경찰서 1층 · 지하 유수지 통로",
       "indoors": true,
       "intro": [
@@ -3313,6 +3323,7 @@
       "stage": 10,
       "branch": "badge",
       "title": "지침 제1호가 있는 건물",
+      "lead": "friend",
       "location": "강변경찰서",
       "indoors": true,
       "intro": [
@@ -3890,6 +3901,7 @@
       "stage": 8,
       "branch": "guns",
       "title": "총을 쥔 사람이 다섯인 낮",
+      "lead": "me",
       "location": "강변경찰서 1층 강당 · 블록 일대",
       "indoors": true,
       "intro": [
@@ -4230,6 +4242,7 @@
       "stage": 9,
       "branch": "guns",
       "title": "총이 처음 쓰이는 밤",
+      "lead": "me",
       "location": "강변경찰서 1층 민원실",
       "indoors": true,
       "intro": [
@@ -4572,6 +4585,7 @@
       "stage": 10,
       "branch": "guns",
       "title": "쥔 사람이 정하는 건물",
+      "lead": "me",
       "location": "강변경찰서",
       "indoors": true,
       "intro": [
@@ -5125,6 +5139,7 @@
       "stage": 8,
       "branch": "river",
       "title": "강폭 380미터 — 건너는 방법을 고른다",
+      "lead": "me",
       "location": "하천 둔치 수문 관리소 · 교량 남단",
       "indoors": true,
       "intro": [
@@ -5408,6 +5423,7 @@
       "stage": 9,
       "branch": "river",
       "title": "건너는 밤 — 물은 4분이다",
+      "lead": "me",
       "location": "하천 둔치 수문 관리소",
       "indoors": true,
       "intro": [
@@ -5800,6 +5816,7 @@
       "stage": 10,
       "branch": "river",
       "title": "선을 어떻게 할 것인가",
+      "lead": "friend",
       "location": "강변 하천 둔치 · 강 북단",
       "indoors": true,
       "intro": [
@@ -6334,6 +6351,7 @@
       "stage": 9,
       "branch": "",
       "title": "강변경찰서 — 줄을 지어 도착한다",
+      "lead": "friend",
       "location": "강변경찰서 정문",
       "indoors": true,
       "intro": [
@@ -6603,6 +6621,7 @@
       "stage": 10,
       "branch": "",
       "title": "백칠십 몇이 있는 건물",
+      "lead": "friend",
       "location": "강변경찰서",
       "indoors": true,
       "intro": [

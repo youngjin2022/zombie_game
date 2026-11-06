@@ -9,7 +9,7 @@
  * "이 브라우저에서는 저장이 유지되지 않는다" 고 알린다.
  */
 
-import { checkName, MODES, SOLO } from "./engine.js";
+import { checkName, MODES, SOLO, DUO_KEYS } from "./engine.js";
 
 export const SAVE_VERSION = 2;
 export const SLOTS = [1, 2, 3];
@@ -106,9 +106,14 @@ export const store = new Store();
  * 설정
  * ===================================================================== */
 
+// 상의 제한 시간. 0 이면 끄기.
+export const TALK_LIMITS = [0, 30, 60];
+
 export const DEFAULT_SETTINGS = {
   typewriter: true, fontSize: "m", lineDelay: 170,
   mode: SOLO, names: { yj: "", sc: "" },     // 마지막에 쓴 모드와 이름
+  privatePicks: false,                       // 둘이 모드: 고르는 동안 가린다
+  talkLimit: 0,                              // 둘이 모드: 상의 제한 시간(초)
 };
 
 export function loadSettings() {
@@ -120,6 +125,8 @@ export function loadSettings() {
     out.lineDelay = d.lineDelay;
   }
   if (MODES.includes(d.mode)) out.mode = d.mode;
+  if (typeof d.privatePicks === "boolean") out.privatePicks = d.privatePicks;
+  if (TALK_LIMITS.includes(d.talkLimit)) out.talkLimit = d.talkLimit;
   out.names = { yj: "", sc: "" };
   if (d.names && typeof d.names === "object") {
     for (const p of ["yj", "sc"]) {
@@ -137,6 +144,8 @@ export function saveSettings(s) {
     lineDelay: s.lineDelay,
     mode: s.mode,
     names: { yj: (s.names && s.names.yj) || "", sc: (s.names && s.names.sc) || "" },
+    privatePicks: Boolean(s.privatePicks),
+    talkLimit: TALK_LIMITS.includes(s.talkLimit) ? s.talkLimit : 0,
   });
 }
 
@@ -294,6 +303,20 @@ export function validatePayload(payload, content) {
   }
   if (s.mode !== undefined && !MODES.includes(s.mode)) {
     return bad(`모드가 이상하다: ${show(s.mode)}`);
+  }
+  // 팀워크와 상의 통계. 둘이 모드가 생기기 전 저장에는 없다. 없으면 기본값을 쓴다.
+  if (s.teamwork !== undefined
+      && (!Number.isInteger(s.teamwork) || s.teamwork < 0 || s.teamwork > 100)) {
+    return bad(`팀워크 값이 이상하다: ${show(s.teamwork)}`);
+  }
+  if (s.duo !== undefined) {
+    if (!isPlainObject(s.duo)) return bad("duo 가 객체가 아니다");
+    for (const k of DUO_KEYS) {
+      const x = s.duo[k];
+      if (x !== undefined && (!Number.isInteger(x) || x < 0 || x > 100000)) {
+        return bad(`duo.${k} 값이 이상하다: ${show(x)}`);
+      }
+    }
   }
   if (payload.meta !== undefined && !isPlainObject(payload.meta)) return bad("meta 가 객체가 아니다");
   return { ok: true, payload };
