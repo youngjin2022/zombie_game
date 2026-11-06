@@ -188,7 +188,7 @@ def validate(content, verbose: bool = False) -> Report:
             rep.warn(where, "stage가 없다")
         check_text(rep, where, scene.get("intro"), "intro")
         if not placeholder and not scene.get("sc_line") and not scene.get("sc_line_variants"):
-            rep.warn(where, "승철의 분석 한 줄(sc_line)이 없다")
+            rep.warn(where, "동행의 분석 한 줄(sc_line)이 없다")
         check_effects(rep, where, scene.get("on_enter"), content, made_flags)
 
         for i, v in enumerate(scene.get("variants", [])):
@@ -474,6 +474,55 @@ def all_texts(content):
         yield f"엔딩 {eid}.title", e.get("title", "")
         for t in e.get("text", []) or []:
             yield f"엔딩 {eid}", t
+
+
+# ---- 금지어 검사 (작업 2) -------------------------------------------
+
+# 시나리오 텍스트에 **직접** 나오면 안 되는 말.
+#
+# 1) 원래 이름 — 이름은 플레이어가 짓는다. 텍스트에는 {me} / {friend} 만 쓴다.
+# 2) 두 주인공의 경력 — 특전사·중사·전역·체대 같은 설정은 쓰지 않는다.
+#    판정 수치(yj_combat / sc_aim / sc_judgment)는 그대로 두고, **서술만**
+#    성격과 행동으로 쓴다. ("침착하다", "손이 빠르다", "관찰력이 좋다")
+#
+# 여기 없는 말 중에 일부러 남겨 둔 것:
+#   군인   — 검문소와 통신의 **다른 사람들**을 가리킨다 (end_school_true 등)
+#   훈련장 · 군 통신 · 군용 등산화 — 장소와 물건 이름이다
+#   체육관 · 체육창고 · 체육시설 · 전직 체육 교사(최동규) — 장소와 **다른 인물**의 설정
+#   제대   — "제대로" 와 겹친다. 경력을 말하는 쓰임은 전역·복무 쪽에서 잡힌다
+BANNED_WORDS = {
+    # 원래 이름
+    "영진": "이름은 {me} / {friend} 로 쓴다",
+    "승철": "이름은 {me} / {friend} 로 쓴다",
+    # 군 경력
+    "특전사": "경력 대신 성격과 행동으로 쓴다",
+    "중사": "경력 대신 성격과 행동으로 쓴다",
+    "하사": "경력 대신 성격과 행동으로 쓴다",
+    "병장": "경력 대신 성격과 행동으로 쓴다",
+    "부사관": "경력 대신 성격과 행동으로 쓴다",
+    "전역": "경력 대신 성격과 행동으로 쓴다",
+    "복무": "경력 대신 성격과 행동으로 쓴다",
+    "입대": "경력 대신 성격과 행동으로 쓴다",
+    "예비군": "경력 대신 성격과 행동으로 쓴다",
+    "군대": "경력 대신 성격과 행동으로 쓴다",
+    "분대": "경력 대신 성격과 행동으로 쓴다",
+    # 체육 전공
+    "체대": "경력 대신 성격과 행동으로 쓴다",
+    "체육 전공": "경력 대신 성격과 행동으로 쓴다",
+    "체육학과": "경력 대신 성격과 행동으로 쓴다",
+}
+
+
+def check_banned_words(rep: Report, content) -> None:
+    """시나리오 텍스트에 원래 이름이나 경력 설정이 남아 있는지 본다."""
+    for where, text in all_texts(content):
+        if not isinstance(text, str) or not text:
+            continue
+        for word, why in BANNED_WORDS.items():
+            if word in text:
+                i = text.index(word)
+                snippet = " ".join(text[max(0, i - 16):i + len(word) + 16].split())
+                rep.err(where, f"쓰면 안 되는 말 '{word}' — {why} … {snippet} …")
 
 
 def check_name_tokens(rep: Report, content) -> int:
@@ -818,6 +867,7 @@ def main(argv=None) -> int:
 
     rep = validate(content, args.verbose)
     tokens = check_name_tokens(rep, content)
+    check_banned_words(rep, content)
     for line in stats_table(content, rep.route_moves):
         print(line)
     print()

@@ -4,7 +4,7 @@
 두 엔진이 한 군데라도 다르면 바로 갈라진다. 한 걸음마다 아래를 전부 적는다.
 
   - 고를 수 있는 선택지 목록과 못 고르는 선택지의 사유 라벨  (conditions.meets)
-  - 승철의 분석 한 줄과 적용된 variants 개수                  (variants / sc_line_variants)
+  - 동행({friend})의 분석 한 줄과 적용된 variants 개수                  (variants / sc_line_variants)
   - 판정 확률과 성공 여부, 그 뒤의 난수 상태                   (conditions.probability / roll)
   - 발생한 사건 문장과 '상태 변화' 줄                          (effects.apply / effects.summary)
   - 상태 전체 (history 는 steps 와 겹치므로 뺀다)              (GameState)

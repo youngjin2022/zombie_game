@@ -375,8 +375,8 @@ export class GameState {
     this.indoors = true;
     this.location = "아파트 7층";
 
-    this.yj_combat = 88;    // 특전사 출신
-    this.sc_aim = 12;       // 승철은 사격 경험이 없다
+    this.yj_combat = 88;    // 몸이 먼저 움직인다. 손이 떨리지 않는다
+    this.sc_aim = 12;       // 동행은 총을 잡아 본 적이 없다
     this.sc_judgment = 85;
 
     this.items = [
@@ -1055,7 +1055,7 @@ export class Game {
     return FALLBACK_ENDING[cause];
   }
 
-  /** 선택지 앞에 붙는 승철의 분석 한 줄. */
+  /** 선택지 앞에 붙는 동행({friend})의 분석 한 줄. */
   scLine(scene) {
     for (const v of scene.sc_line_variants || []) {
       if (meets(this.state, v.when, this.c).ok) return v.line || "";

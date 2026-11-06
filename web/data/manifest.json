@@ -3,16 +3,16 @@
  "minified": false,
  "files": {
   "common.json": {
-   "bytes": 41788,
-   "sha256_12": "63218ca5709a"
+   "bytes": 42624,
+   "sha256_12": "279f5fca20ac"
   },
   "route_school.json": {
-   "bytes": 224143,
-   "sha256_12": "63c8541de4f8"
+   "bytes": 230128,
+   "sha256_12": "3530d991f8d3"
   },
   "route_mart.json": {
-   "bytes": 211304,
-   "sha256_12": "f8905d9633ac"
+   "bytes": 215150,
+   "sha256_12": "a0419d73699e"
   },
   "route_temple.json": {
    "bytes": 291122,

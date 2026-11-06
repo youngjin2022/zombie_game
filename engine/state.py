@@ -68,8 +68,8 @@ class GameState:
     indoors: bool = True
     location: str = "아파트 7층"
 
-    yj_combat: int = 88                 # 특전사 출신. 전역 후 체력은 다소 떨어졌다.
-    sc_aim: int = 12                    # 승철은 사격 경험이 없다.
+    yj_combat: int = 88                 # 몸이 먼저 움직인다. 손이 떨리지 않는다.
+    sc_aim: int = 12                    # 동행은 총을 잡아 본 적이 없다.
     sc_judgment: int = 85               # 판단력, 분석력
 
     items: list = field(default_factory=lambda: [

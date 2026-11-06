@@ -203,7 +203,7 @@ class Game:
             self.ui.line(self.t(line))
 
     def sc_line(self, scene: dict) -> str:
-        """선택지 앞에 붙는 승철의 분석 한 줄."""
+        """선택지 앞에 붙는 동행({friend})의 분석 한 줄."""
         for v in scene.get("sc_line_variants", []):
             ok, _ = conditions.meets(self.state, v.get("when"), self.c)
             if ok:
