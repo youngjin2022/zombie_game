@@ -1598,6 +1598,9 @@ web/engine.js            같은 두 줄
 - `view` · `state` · `round` 는 **방장만** 쓴다. 참가자는 `round/picks/guest` 와
   `chat` 만 쓴다.
 - 선택 값은 **1~5 정수**, 채팅은 **1~100자 문자열**, 이름은 1~10자로 규칙이 검사한다.
+  규칙 언어에 `Number.isInteger` 가 없으므로 값을 하나씩 비교한다.
+- 채팅의 `who` 는 **쓰는 사람의 uid 와 맞는지** 규칙이 확인한다. 참가자가
+  `who: "host"` 로 쓸 수 없다.
 - `/codes/{코드}` 는 **없을 때만** 쓸 수 있다(재발급 금지).
 - 방 전체 덮어쓰기는 **없거나 24시간이 지났을 때**만, 그리고 자기가 방장이 될 때만.
 
@@ -1642,6 +1645,23 @@ CDN SDK          성공 (10.12.5 ES 모듈)
 
 - **온라인 모드는 보안 규칙을 올려야 돈다.** 안 올리면 방 만들기에서
   `PERMISSION_DENIED` 가 난다(화면에 그렇게 안내한다). 규칙은 `database.rules.json`.
+- **규칙 파일을 고칠 때는 규칙 언어 문법만 쓴다.** `toFixed` 를 썼다가 콘솔에서
+  `No such method/property 'toFixed'` 로 게시가 막혔다. 자바스크립트 함수는 없다.
+  쓸 수 있는 것은 스냅숏 메서드(`val` · `child` · `parent` · `exists` ·
+  `hasChild` · `hasChildren` · `isNumber` · `isString` · `isBoolean`)와 문자열의
+  `length` · `matches` · `contains` · `beginsWith` · `endsWith` 뿐이다.
+- **`requests` 노드 자체에도 방장 쓰기 규칙이 필요하다.** `kick()` 이
+  `remove(rooms/{코드}/requests)` 를 하는데, `requests/$uid` 에만 규칙이 있으면
+  부모를 통째로 지우는 것이 막힌다. 지금은 `!newData.exists()` 일 때만, 즉
+  **지우기만** 허용한다.
+- **규칙을 고치면 시뮬레이터로 두드려 본다.** `targaryen` (순수 JS, 콘솔과 같은
+  규칙 파서)으로 web/online.js 가 하는 읽기·쓰기 88가지를 돌려 봤다. 저장소에는
+  넣지 않았다(빌드 없는 정적 사이트를 지킨다). 임시 폴더에서
+  `npm install targaryen` 한 뒤 쓰면 된다. 위 두 구멍은 이 시뮬레이터가 찾았다.
+- **`requests/$uid` 의 방 잠금 검사는 `.write` 에 둔다.** 처음에는 `.validate` 에
+  뒀는데, 방장이 입장을 수락하면 `meta/locked` 가 먼저 `true` 가 되므로 그다음
+  `answer: "yes"` 쓰기가 자기 규칙에 막혔다(참가자가 승인을 영원히 못 받는다).
+  지금은 잠금 검사가 **참가자가 요청을 만들 때만** 걸린다. 지우기는 언제나 된다.
 - **Firebase 설정값은 `web/firebase-config.js` 한 곳에만 둔다.** `apiKey` 는 숨기는
   값이 아니다. 실제 보호는 규칙이 한다.
 - **온라인은 방장 기기가 전부 계산한다.** 참가자는 엔진을 안 돌린다. 그래서

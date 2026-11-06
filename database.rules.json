@@ -15,9 +15,9 @@
       "$code": {
         ".read": "auth != null && (data.child('players/host/uid').val() === auth.uid || data.child('players/guest/uid').val() === auth.uid)",
 
-        ".write": "auth != null && (!data.exists() || now - data.child('meta/lastActive').val() > 86400000 || (data.child('players/host/uid').val() === auth.uid && !newData.exists())) && (!newData.exists() || newData.child('players/host/uid').val() === auth.uid)",
+        ".write": "auth != null && (!data.exists() || (data.child('meta/lastActive').isNumber() && now - data.child('meta/lastActive').val() > 86400000) || (data.child('players/host/uid').val() === auth.uid && !newData.exists())) && (!newData.exists() || newData.child('players/host/uid').val() === auth.uid)",
 
-        ".validate": "!newData.exists() || (newData.hasChildren(['meta', 'players']) && $code.matches(/^[A-Z2-9]{6}$/))",
+        ".validate": "!newData.exists() || (newData.hasChildren(['meta', 'players']) && $code.length === 6 && $code.matches(/^[A-Z2-9]*$/))",
 
         "meta": {
           ".read": "auth != null",
@@ -56,13 +56,16 @@
 
         "requests": {
           ".read": "auth != null && data.parent().child('players/host/uid').val() === auth.uid",
+          ".write": "auth != null && data.parent().child('players/host/uid').val() === auth.uid && !newData.exists()",
           "$uid": {
             ".read": "auth != null && $uid === auth.uid",
-            ".write": "auth != null && ($uid === auth.uid || data.parent().parent().child('players/host/uid').val() === auth.uid)",
-            ".validate": "!newData.exists() || (newData.hasChildren(['name', 'at']) && data.parent().parent().child('meta/locked').val() !== true)",
+            ".write": "auth != null && (($uid === auth.uid && (!newData.exists() || data.parent().parent().child('meta/locked').val() !== true)) || data.parent().parent().child('players/host/uid').val() === auth.uid)",
+            ".validate": "!newData.exists() || newData.hasChildren(['name', 'at'])",
             "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 10" },
             "at": { ".validate": "newData.isNumber()" },
-            "answer": { ".validate": "newData.val() === 'yes' || newData.val() === 'no' || newData.val() === 'full'" },
+            "answer": {
+              ".validate": "(newData.val() === 'yes' || newData.val() === 'no' || newData.val() === 'full') && data.parent().parent().parent().child('players/host/uid').val() === auth.uid"
+            },
             "$other": { ".validate": false }
           }
         },
@@ -76,10 +79,10 @@
           "picks": {
             "guest": {
               ".write": "auth != null && data.parent().parent().parent().child('players/guest/uid').val() === auth.uid",
-              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 5 && newData.val() === newData.val().toFixed(0) * 1"
+              ".validate": "newData.val() === 1 || newData.val() === 2 || newData.val() === 3 || newData.val() === 4 || newData.val() === 5"
             },
             "host": {
-              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 5"
+              ".validate": "newData.val() === 1 || newData.val() === 2 || newData.val() === 3 || newData.val() === 4 || newData.val() === 5"
             }
           },
           "want": {
@@ -94,7 +97,9 @@
           ".write": "auth != null && (data.parent().child('players/host/uid').val() === auth.uid || data.parent().child('players/guest/uid').val() === auth.uid)",
           "$msg": {
             ".validate": "newData.hasChildren(['who', 'text', 'at'])",
-            "who": { ".validate": "newData.val() === 'host' || newData.val() === 'guest'" },
+            "who": {
+              ".validate": "(newData.val() === 'host' && data.parent().parent().parent().child('players/host/uid').val() === auth.uid) || (newData.val() === 'guest' && data.parent().parent().parent().child('players/guest/uid').val() === auth.uid)"
+            },
             "text": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 100" },
             "at": { ".validate": "newData.isNumber()" },
             "$other": { ".validate": false }

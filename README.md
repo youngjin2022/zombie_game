@@ -270,6 +270,15 @@ python parity.py && node web/tools/parity.mjs # 둘이 경로 40개까지 같이
 입장 승인, 방 잠금(2명이 차면), 같은 기기 재접속 허용, 한 기기에서 없는 코드를
 5회 연속 넣으면 1분 차단 — 이것들은 [`web/online.js`](web/online.js) 가 한다.
 
+> **규칙 언어는 자바스크립트가 아니다.** `Math`, `Number.isInteger`, `toFixed` 같은
+> 것이 없다. 쓸 수 있는 것은 `val()` · `child()` · `parent()` · `exists()` ·
+> `hasChild()` · `hasChildren()` · `isNumber()` · `isString()` · `isBoolean()` 과
+> 문자열의 `length` · `matches()` · `contains()` · `beginsWith()` · `endsWith()`
+> 정도다. 그래서 "1~5 정수" 는 값을 하나씩 비교해서
+> (`newData.val() === 1 || … || newData.val() === 5`) 검사한다. 정수 여부도 이걸로
+> 같이 걸러진다. 방 코드 6자도 `{6}` 수량자 대신 `$code.length === 6` 으로 센다.
+
+
 ### PC 와 휴대폰으로 확인하는 법
 
 1. PC 에서 배포 주소를 열고 **온라인으로 둘이 → 이름 → 방 만들기**. 코드 6자가 뜬다.
