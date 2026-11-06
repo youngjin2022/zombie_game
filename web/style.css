@@ -586,3 +586,126 @@ button { font: inherit; color: inherit; }
 @media (max-width: 480px) {
   .talk-buttons .btn { flex: 1 1 100%; }
 }
+
+/* ===================== 온라인 2인 모드 ===================== */
+
+.online-box {
+  margin: 0.6rem 0 0.8rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.online-box .row { display: flex; gap: 0.4rem; margin: 0.5rem 0; }
+.online-box .row .btn { flex: 1; }
+.join-row { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.join-row label { color: var(--ink-2); font-size: 0.9em; }
+.join-row input {
+  flex: 1 1 8rem;
+  min-width: 7rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* 방 화면 */
+.room { overflow-y: auto; }
+.room-inner { max-width: 32rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+.room-h1 { font-size: 1.4rem; color: var(--accent); margin: 0 0 1rem; }
+.room-code-box {
+  padding: 0.9rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  text-align: center;
+}
+.room-code-label { margin: 0; color: var(--ink-3); font-size: 0.85em; }
+.room-code {
+  margin: 0.3rem 0 0.7rem;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.room-code-box .row { display: flex; gap: 0.4rem; justify-content: center; }
+.room-people { margin-top: 1rem; }
+.room-players { list-style: none; margin: 0.4rem 0; padding: 0; display: grid; gap: 0.35rem; }
+.room-players li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.room-name { font-weight: 700; }
+.room-dot { margin-left: auto; font-size: 0.82em; color: var(--ink-3); }
+.room-dot.on { color: var(--good); }
+.room-dot.off { color: var(--bad); }
+.room-requests { display: grid; gap: 0.4rem; margin-top: 0.6rem; }
+.req {
+  padding: 0.6rem;
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+}
+.req-text { margin: 0 0 0.45rem; }
+.req .row { display: flex; gap: 0.4rem; }
+.req .row .btn { flex: 1; }
+
+/* 게임 화면의 연결 상태 띠 */
+.net {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0.3rem 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+  font-size: 0.85em;
+}
+.net.down { background: #2a1b1b; }
+.net-code { color: var(--accent); font-weight: 700; letter-spacing: 0.1em; }
+.net-warn { color: var(--warm); }
+.net .btn.tiny { margin-left: auto; }
+.net-paused {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0.9rem;
+  text-align: center;
+  color: var(--warm);
+}
+
+.btn.tiny { padding: 0.25rem 0.5rem; font-size: 0.82em; }
+
+/* 상의 화면의 짧은 채팅 */
+.chat { margin-top: 0.7rem; border-top: 1px solid var(--line); padding-top: 0.6rem; }
+.chat-log {
+  max-height: 7rem;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 0.4rem;
+}
+.chat-line { margin: 0; display: flex; gap: 0.4rem; align-items: baseline; font-size: 0.9em; }
+.chat-text { color: var(--ink); }
+.chat-quick { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+.chat-row { display: flex; gap: 0.4rem; }
+.chat-input {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}

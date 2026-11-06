@@ -9,7 +9,7 @@ import {
   loadContent, Game, Rng, GameState,
   codexSummary, codexByRoute, TYPE_LABEL,
   Names, checkName, checkPair, MODES, MODE_LABEL, MODE_DESC, MODE_READY,
-  nameLabels, SOLO, isTwoPlayer,
+  nameLabels, SOLO, ONLINE, isTwoPlayer,
   DuoTurn, settle, agreeRate, KIND_LABEL, TEAMWORK_DELTA,
   TALK, LEAD, COIN, MAX_REPICK,
 } from "./engine.js";
@@ -19,8 +19,14 @@ import {
   loadCodex, recordEnding,
   writeAuto, readAuto, clearAuto,
   writeSlot, readSlot, clearSlot, slotList, SLOTS,
-  exportCode, importCode, validatePayload, TALK_LIMITS,
+  exportCode, importCode, validatePayload, TALK_LIMITS, makePayload,
 } from "./storage.js";
+
+import {
+  Room, OnlineError, codeFromUrl, roomLink, CODE_RE,
+  CHAT_MAX, QUICK_CHAT, HOST_AWAY_MS,
+} from "./online.js";
+import { configured as firebaseReady } from "./firebase-config.js";
 
 /* ===================== 작은 도구 ===================== */
 
@@ -85,12 +91,23 @@ let duoPhase = "p1";              // "p1" | "p2" | "talk"
 let duoPicks = { p1: null, p2: null };
 let talkTimer = null;             // 상의 제한 시간
 let talkLeft = 0;
+
+// 온라인 2인 모드
+let room = null;                  // online.js 의 Room
+let roomSnap = null;              // 마지막으로 받은 방 상태
+let remote = null;                // 참가자: 방장이 보낸 화면
+let remoteSeq = -1;               // 그 화면의 번호 (같으면 다시 안 그린다)
+let hostTurn = null;              // 방장이 들고 있는 DuoTurn
+let hostPick = null;              // 방장이 고른 번호 (둘 다 고르기 전엔 안 올린다)
+let roundSeq = 0;
+let chatLines = [];
+let netTimer = null;
 let revealQueue = [];
 let revealTimer = null;
 
 /* ===================== 화면 전환 ===================== */
 
-const SCREENS = ["boot", "title", "play", "ending"];
+const SCREENS = ["boot", "title", "room", "play", "ending"];
 function show(name) {
   for (const s of SCREENS) $(s).hidden = s !== name;
 }
@@ -143,7 +160,16 @@ function showTitle(notice = "") {
   const last = settings.names || { yj: "", sc: "" };
   $("in-me").value = last.yj || "";
   $("in-friend").value = last.sc || "";
-  setMode(pendingResume ? SOLO : (MODE_READY[settings.mode] ? settings.mode : SOLO));
+  $("room-err").textContent = "";
+  $("room-copy-msg").textContent = "";
+  $("room-note").textContent = "";
+
+  // 링크(?room=ABC123)로 들어왔으면 온라인 모드를 골라 두고 코드를 채운다.
+  const linked = firebaseReady() ? codeFromUrl() : "";
+  if (linked) $("in-room").value = linked;
+  const want = linked ? ONLINE
+    : (MODE_READY[settings.mode] ? settings.mode : SOLO);
+  setMode(pendingResume ? SOLO : want);
   $("btn-start").textContent = pendingResume ? "이어 하기" : "시작";
 
   const codex = loadCodex();
@@ -182,7 +208,8 @@ function buildModeList() {
   const host = $("mode-list");
   clear(host);
   for (const m of MODES) {
-    const ready = Boolean(MODE_READY[m]);
+    // 온라인은 Firebase 설정이 있어야 열린다.
+    const ready = Boolean(MODE_READY[m]) && (m !== ONLINE || firebaseReady());
     const card = el("button", "mode-card" + (ready ? "" : " soon"));
     card.type = "button";
     card.dataset.mode = m;
@@ -208,12 +235,20 @@ function setMode(mode) {
   const [a, b] = nameLabels(setupMode);
   $("lb-me").textContent = a;
   $("lb-friend").textContent = b;
+
+  // 온라인은 이름을 각자 자기 기기에서 하나만 넣고, 방 코드로 만난다.
+  const net = setupMode === ONLINE;
+  $("online-box").hidden = !net;
+  $("in-friend").closest(".name-field").hidden = net;
+  $("btn-start").hidden = net;
+  if (net) showReopenButton();
   validateNames();
 }
 
 /** 두 칸을 보고 사유를 표시한다. 둘 다 유효할 때만 시작 버튼이 켜진다. */
 function validateNames() {
   const rawMe = $("in-me").value;
+  if (setupMode === ONLINE) return validateOneName(rawMe);
   const rawFriend = $("in-friend").value;
   const r = checkPair(rawMe, rawFriend);
 
@@ -230,6 +265,19 @@ function validateNames() {
     sc: checkName(rawFriend).ok ? r.names.sc : "",
   });
   return r;
+}
+
+/** 온라인: 내 이름 한 칸만 본다. 상대 이름은 상대 기기에서 넣는다. */
+function validateOneName(raw) {
+  const r = checkName(raw);
+  setFieldError("me", raw === "" ? "" : (r.ok ? "" : r.error));
+  setFieldError("friend", "");
+  $("btn-room-create").disabled = !r.ok;
+  $("btn-room-join").disabled = !r.ok;
+  const reopen = $("btn-room-reopen");
+  if (!reopen.hidden) reopen.disabled = !r.ok;
+  renderPrologue({ yj: r.ok ? r.name : "", sc: "" });
+  return { ok: r.ok, names: { yj: r.ok ? r.name : "", sc: "" }, errors: { me: r.error, friend: "" } };
 }
 
 function setFieldError(which, msg) {
@@ -316,8 +364,20 @@ function resume(payload, msg) {
 
 /* ===================== 상단 상태창 ===================== */
 
+/** 참가자는 엔진이 없다. 방장이 보낸 view 로 그린다. */
+const isGuest = () => Boolean(room) && room.role === "guest";
+const curStatus = () => (isGuest() ? (remote && remote.status) : game.statusView());
+const curChoices = () => (isGuest() ? ((remote && remote.choices) || []) : game.choices());
+const curNameOf = (pid) => (isGuest()
+  ? ((remote && remote.names && remote.names[pid]) || "")
+  : game.state.nameOf(pid));
+const curTeamwork = () => (isGuest()
+  ? (remote ? remote.teamwork : 50)
+  : game.state.teamwork);
+
 function renderStatus() {
-  const v = game.statusView();
+  const v = curStatus();
+  if (!v) return;
   $("st-when").textContent = `${v.dateStr}(${v.day}일차) ${v.clockText} · `
     + `${v.temp.toFixed(0)}℃${v.night ? " 🌙" : ""}`;
   $("st-where").textContent = `${v.location} (${v.indoors ? "실내" : "야외"})`;
@@ -330,8 +390,8 @@ function renderStatus() {
     c.appendChild(el("b", null, value));
     chips.appendChild(c);
   };
-  add(game.state.nameOf("yj"), v.hpYj, v.aliveYj ? hpCls(v.hpYjRatio) : "dead");
-  add(game.state.nameOf("sc"), v.hpSc, v.aliveSc ? hpCls(v.hpScRatio) : "dead");
+  add(curNameOf("yj"), v.hpYj, v.aliveYj ? hpCls(v.hpYjRatio) : "dead");
+  add(curNameOf("sc"), v.hpSc, v.aliveSc ? hpCls(v.hpScRatio) : "dead");
   add("허기", String(v.hunger), v.hunger >= 75 ? "crit" : v.hunger >= 55 ? "low" : "");
   add("체온", String(v.warmth), v.warmth <= 20 ? "crit" : v.warmth <= 40 ? "low" : "");
   add("물", `${v.water}ml`, v.water <= 0 ? "crit" : v.water < 400 ? "low" : "");
@@ -339,7 +399,7 @@ function renderStatus() {
   add("탄약", `${v.ammoYj}/${v.ammoSc}`, v.ammoYj + v.ammoSc <= 0 ? "low" : "");
   add("소음", String(v.noise), v.noise >= 70 ? "crit" : v.noise >= 45 ? "low" : "");
   if (twoPlayer()) {
-    const tw = game.state.teamwork;
+    const tw = curTeamwork();
     add("팀워크", String(tw), tw <= 25 ? "crit" : tw <= 40 ? "low" : "");
   }
 
@@ -383,6 +443,7 @@ function renderStep(blocks, ending) {
 
   $("body").scrollTop = 0;
   renderChoices();
+  if (room && room.role === "host") pushView(null, Boolean(ending));
 
   if (!settings.typewriter) {
     finishReveal();
@@ -394,6 +455,12 @@ function renderStep(blocks, ending) {
 }
 
 function blockNode(b) {
+  const node = blockNodeOf(b);
+  if (node) node.dataset.t = b.t || "line";
+  return node;
+}
+
+function blockNodeOf(b) {
   switch (b.t) {
     case "title": return el("h2", "scene-title", b.text);
     case "gap": return el("div", "gap");
@@ -449,7 +516,8 @@ const revealing = () => revealQueue.length > 0 || revealTimer !== null;
 
 /* ===================== 선택지 ===================== */
 
-const twoPlayer = () => Boolean(game) && isTwoPlayer(game.state.mode);
+const twoPlayer = () => isGuest() || (Boolean(game) && isTwoPlayer(game.state.mode));
+const online = () => Boolean(room) && Boolean(room.code);
 
 function resetDuo() {
   stopTalkTimer();
@@ -464,15 +532,16 @@ function renderChoices() {
   clear(foot);
   foot.classList.remove("disabled");
   if (pendingEnding) { showEndingButton(); return; }
+  if (online()) { renderOnline(foot); return; }
   if (twoPlayer()) { renderDuo(foot); return; }
 
   foot.appendChild(choiceList((c) => () => choose(c.index)));
 }
 
 /** 선택지 버튼 목록. pick(c) 가 그 버튼의 onclick 을 돌려준다. */
-function choiceList(pick, mark = null) {
+function choiceList(pick, mark = null, lock = false) {
   const list = el("div", "choice-list");
-  for (const c of game.choices()) {
+  for (const c of curChoices()) {
     const b = el("button", "choice" + (c.ok ? "" : " locked"));
     b.type = "button";
     b.appendChild(el("span", "num", `${c.index + 1}`));
@@ -481,6 +550,8 @@ function choiceList(pick, mark = null) {
       b.appendChild(el("span", "why", (c.label || "(조건 미달)") + " — 선택 불가"));
       b.disabled = true;
       b.setAttribute("aria-disabled", "true");
+    } else if (lock) {
+      b.disabled = true;
     } else {
       b.onclick = pick(c);
     }
@@ -687,6 +758,649 @@ function choose(index, before = []) {
   }
 }
 
+/* ===================== 온라인 2인 모드 ===================== */
+/*
+ * 게임 상태와 판정은 **방장 기기에서만** 돈다. 참가자는 방장이 보낸 view 를 그린다.
+ * 선택은 각자 올린다. 둘 다 올라오기 전에는 상대 선택을 **보여 주지 않는다**
+ * (방장은 자기 선택을 DB 에 올리지도 않는다. 둘 다 고른 뒤에 같이 공개한다).
+ */
+
+function myName() {
+  const r = checkName($("in-me").value);
+  return r.ok ? r.name : "";
+}
+
+function showReopenButton() {
+  const b = $("btn-room-reopen");
+  const code = store.get("zs.room.v1") || "";
+  if (code && CODE_RE.test(code)) {
+    b.hidden = false;
+    b.textContent = "방 " + code + " 다시 열기 (방장)";
+    b.disabled = !myName();
+  } else {
+    b.hidden = true;
+  }
+}
+
+function roomError(msg) {
+  $("room-err").textContent = msg || "";
+}
+
+function ensureRoom() {
+  if (room) return room;
+  room = new Room({
+    onRoom: (snap) => { roomSnap = snap; onRoomUpdate(snap); },
+    onAccepted: (name) => {
+      toast("입장이 승인됐다. " + name + " 으로 들어간다.");
+      show("room");
+    },
+    onChat: (m) => {
+      if (chatLines.some((x) => x.id === m.id)) return;
+      chatLines.push(m);
+      if (chatLines.length > 50) chatLines.shift();
+      renderChat();
+    },
+    onLeft: (why) => leaveRoom(why),
+  });
+  return room;
+}
+
+async function createRoom() {
+  const name = myName();
+  if (!name) { roomError("이름을 먼저 넣어라."); return; }
+  roomError("방을 만드는 중…");
+  const r = ensureRoom();
+  try {
+    const code = await r.create(name);
+    store.set("zs.room.v1", code);
+    chatLines = [];
+    roomError("");
+    $("room-note").textContent = "";
+    show("room");
+  } catch (e) {
+    roomError(netMessage(e));
+  }
+}
+
+async function reopenRoom() {
+  const name = myName();
+  const code = store.get("zs.room.v1") || "";
+  if (!name || !code) return;
+  roomError("");
+  const r = ensureRoom();
+  try {
+    const saved = await r.reopen(code, name);
+    chatLines = [];
+    show("room");
+    $("room-note").textContent = "";
+    if (saved) {
+      const ok = validatePayload(saved, content);
+      if (ok.ok) {
+        room.savedState = ok.payload;
+        $("room-note").textContent = "저장된 진행이 있다. 시작을 누르면 이어서 한다.";
+      }
+    }
+  } catch (e) {
+    roomError(netMessage(e));
+  }
+}
+
+async function joinRoom() {
+  const name = myName();
+  if (!name) { roomError("이름을 먼저 넣어라."); return; }
+  const code = $("in-room").value.toUpperCase().trim();
+  if (!CODE_RE.test(code)) { roomError("방 코드는 영문·숫자 6자다."); return; }
+  roomError("들어가는 중…");
+  const r = ensureRoom();
+  try {
+    const got = await r.join(code, name);
+    chatLines = [];
+    roomError("");
+    show("room");
+    $("room-code").textContent = code;
+    $("room-note").textContent = got.status === "waiting"
+      ? "방장이 입장을 수락하기를 기다린다."
+      : "자기 자리로 돌아왔다.";
+  } catch (e) {
+    roomError(netMessage(e));
+  }
+}
+
+function netMessage(e) {
+  if (e instanceof OnlineError) return e.message;
+  const m = String((e && e.message) || e);
+  if (/permission_denied/i.test(m)) {
+    return "데이터베이스 규칙이 막았다. database.rules.json 을 Firebase 콘솔에 적용했는지 확인해라.";
+  }
+  if (/configuration-not-found|operation-not-allowed/i.test(m)) {
+    return "익명 로그인이 꺼져 있다. Firebase 콘솔 → Authentication → 익명을 켜라.";
+  }
+  if (/unauthorized-domain/i.test(m)) {
+    return "이 주소가 Firebase 승인된 도메인에 없다. Authentication → Settings 에 추가해라.";
+  }
+  return "연결하지 못했다: " + m;
+}
+
+/* ---- 방 화면 ---- */
+
+function onRoomUpdate(snap) {
+  if (!$("room").hidden) renderRoomScreen(snap);
+  renderNet();
+  if (snap.role === "guest") {
+    applyRemote(snap);
+  } else if (game) {
+    hostOnRound(snap);
+    if (!$("play").hidden) renderChoices();
+  }
+}
+
+function renderRoomScreen(snap) {
+  $("room-code").textContent = snap.code;
+  $("btn-room-reissue").hidden = snap.role !== "host";
+
+  const ul = $("room-players");
+  clear(ul);
+  const line = (tag, pl, who) => {
+    const li = el("li");
+    li.appendChild(el("span", "ptag " + (who === "host" ? "p1" : "p2"), tag));
+    li.appendChild(el("span", "room-name", pl ? pl.name : "아직 없다"));
+    const on = pl && pl.online;
+    li.appendChild(el("span", "room-dot " + (pl ? (on ? "on" : "off") : "none"),
+      pl ? (on ? "연결됨" : "연결 끊김") : "대기"));
+    ul.appendChild(li);
+  };
+  line("방장", snap.players.host, "host");
+  line("참가", snap.players.guest, "guest");
+
+  const box = $("room-requests");
+  clear(box);
+  if (snap.role === "host") {
+    for (const req of snap.requests) {
+      const card = el("div", "req");
+      card.appendChild(el("p", "req-text", req.name + "님이 입장을 요청합니다"));
+      const row = el("div", "row");
+      const yes = el("button", "btn primary", "수락");
+      yes.type = "button";
+      yes.onclick = () => room.accept(req.uid, req.name).catch((e) => toast(netMessage(e)));
+      const no = el("button", "btn", "거절");
+      no.type = "button";
+      no.onclick = () => room.reject(req.uid).catch((e) => toast(netMessage(e)));
+      row.appendChild(yes);
+      row.appendChild(no);
+      card.appendChild(row);
+      box.appendChild(card);
+    }
+    const guest = snap.players.guest;
+    if (guest) {
+      const out = el("button", "btn danger", guest.name + " 내보내기");
+      out.type = "button";
+      out.onclick = () => room.kick().catch((e) => toast(netMessage(e)));
+      box.appendChild(out);
+    }
+  }
+
+  const start = $("btn-room-start");
+  if (snap.role === "host") {
+    start.hidden = false;
+    start.disabled = !snap.players.guest;
+    start.textContent = snap.players.guest
+      ? (room.savedState ? "이어서 시작" : "시작")
+      : "참가자를 기다린다";
+    if (!snap.requests.length && !snap.players.guest) {
+      $("room-note").textContent = "방 코드나 링크를 상대에게 보내라. 들어오면 여기서 수락한다.";
+    }
+  } else {
+    start.hidden = true;
+    if (snap.players.guest && snap.players.guest.uid === snap.uid) {
+      $("room-note").textContent = "방장이 시작하기를 기다린다.";
+    }
+  }
+}
+
+async function copyRoomLink() {
+  const link = roomLink(roomSnap ? roomSnap.code : "");
+  try {
+    await navigator.clipboard.writeText(link);
+    $("room-copy-msg").textContent = "링크를 복사했다.";
+  } catch (e) {
+    $("room-copy-msg").textContent = link;
+  }
+}
+
+async function reissueCode() {
+  try {
+    const code = await room.reissue(myName());
+    store.set("zs.room.v1", code);
+    toast("새 코드 " + code);
+  } catch (e) {
+    toast(netMessage(e));
+  }
+}
+
+async function leaveRoom(why) {
+  stopTalkTimer();
+  if (netTimer !== null) { clearInterval(netTimer); netTimer = null; }
+  if (room) {
+    const destroy = room.role === "host";
+    try { await room.leave({ destroy }); } catch (e) { /* 무시 */ }
+  }
+  room = null;
+  roomSnap = null;
+  remote = null;
+  remoteSeq = -1;
+  hostTurn = null;
+  hostPick = null;
+  hostRoundPending = false;
+  roundSeq = 0;
+  chatLines = [];
+  $("net").hidden = true;
+  showTitle(why || "");
+}
+
+/* ---- 방장: 게임을 시작하고 화면을 보낸다 ---- */
+
+function hostStart() {
+  const snap = roomSnap;
+  if (!snap || !snap.players.guest) return;
+  const names = { yj: snap.players.host.name, sc: snap.players.guest.name };
+  if (room.savedState) {
+    const payload = room.savedState;
+    room.savedState = null;
+    resume(payload, "이어서 한다.");
+  } else {
+    clearAuto();
+    startNew({ mode: ONLINE, names });
+  }
+}
+
+/** 방장이 지금 화면을 참가자에게 보낸다. */
+function pushView(ending, pending = false) {
+  if (!room || room.role !== "host" || !game) return;
+  const blocks = [...$("blocks").children].map((n) => ({
+    t: n.dataset.t || "line", text: n.textContent,
+  }));
+  remoteSeq += 1;
+  const view = {
+    seq: remoteSeq,
+    blocks,
+    choices: game.choices(),
+    status: game.statusView(),
+    names: { yj: game.state.nameOf("yj"), sc: game.state.nameOf("sc") },
+    teamwork: game.state.teamwork,
+    scene: game.state.scene,
+    pending,
+  };
+  if (ending) view.ending = { ...game.endingView(ending), duo: game.duoView() };
+  room.publishView(view).catch(() => {});
+  if (!ending) room.publishState(makePayload(game)).catch(() => {});
+}
+
+/* ---- 참가자: 받은 화면을 그린다 ---- */
+
+function applyRemote(snap) {
+  const view = snap.view;
+  if (!view) return;
+  remote = view;
+  if (view.ending) {
+    if (remoteSeq !== view.seq) {
+      remoteSeq = view.seq;
+      showRemoteEnding(view.ending);
+    }
+    return;
+  }
+  if (view.seq !== remoteSeq) {
+    remoteSeq = view.seq;
+    if ($("play").hidden) show("play");
+    renderStep((view.blocks || []).map((b) => ({ t: b.t, text: b.text })), null);
+  } else if ($("play").hidden) {
+    show("play");
+    renderStep((view.blocks || []).map((b) => ({ t: b.t, text: b.text })), null);
+  } else {
+    renderStatus();
+    renderChoices();
+  }
+  renderNet();
+}
+
+function showRemoteEnding(v) {
+  $("end-type").textContent = "[" + v.typeLabel + "]";
+  $("end-title").textContent = v.title;
+  const text = $("end-text");
+  clear(text);
+  paragraphs(text, v.text);
+  $("end-stats").textContent = "생존 시간 " + v.day + "일차 " + v.clockText
+    + " · 선택 " + v.picks + "회 · " + routeName(v.route);
+  const rec = recordEnding(v.id, v.title);
+  const nw = $("end-new");
+  nw.hidden = !rec.first;
+  if (rec.first) nw.textContent = "새 엔딩을 발견했다." + (v.hidden ? " (숨겨진 엔딩)" : "");
+  renderDuoStats(v.duo);
+  $("end-codex").textContent = codexLine(codexSummary(content, rec.codex));
+  show("ending");
+  $("ending").scrollTop = 0;
+}
+
+function renderDuoStats(dv) {
+  const dnode = $("end-duo");
+  clear(dnode);
+  dnode.hidden = !dv;
+  if (!dv) return;
+  dnode.appendChild(el("p", null,
+    "둘이 고른 판 " + dv.rounds + "회 · 합의율 " + dv.rate + "% (같은 선택 " + dv.same + "회)"));
+  dnode.appendChild(el("p", null,
+    "상의 " + dv.talks + "회 · 다시 골라 합의 " + dv.repick + "회"
+    + " · 주도권자 결정 " + dv.lead + "회 · 동전 " + dv.coin + "회"));
+  dnode.appendChild(el("p", null, "팀워크 " + dv.teamwork));
+}
+
+/* ---- 연결 상태 띠 ---- */
+
+function renderNet() {
+  const node = $("net");
+  if (!online() || !roomSnap) { node.hidden = true; return; }
+  node.hidden = false;
+  clear(node);
+  const snap = roomSnap;
+  const peerName = snap.peer ? snap.peer.name : "상대";
+  const ok = snap.peerOnline;
+  node.className = "net" + (ok ? "" : " down");
+  node.appendChild(el("span", "net-code", "방 " + snap.code));
+  node.appendChild(el("span", "room-dot " + (ok ? "on" : "off"),
+    ok ? peerName + " 연결됨" : peerName + " 연결 끊김 — 기다린다"));
+  if (!ok && snap.role === "guest" && snap.peerAwayMs > HOST_AWAY_MS) {
+    node.appendChild(el("span", "net-warn",
+      "방장이 " + Math.floor(snap.peerAwayMs / 60000) + "분째 돌아오지 않는다."));
+  }
+  const out = el("button", "btn tiny", "방 나가기");
+  out.type = "button";
+  out.onclick = () => leaveRoom("방에서 나왔다.");
+  node.appendChild(out);
+}
+
+const peerDown = () => Boolean(roomSnap) && Boolean(roomSnap.peer) && !roomSnap.peerOnline;
+
+/* ---- 한 판: 고르기와 상의 ---- */
+
+function renderOnline(foot) {
+  if (!roomSnap) { foot.appendChild(el("p", "hint", "연결하는 중…")); return; }
+  if (!roomSnap.peer) {
+    foot.appendChild(el("p", "hint", "상대가 없다. 방 화면에서 기다려라."));
+    return;
+  }
+  if (peerDown()) {
+    foot.appendChild(el("p", "net-paused",
+      roomSnap.peer.name + " 의 연결이 끊겼다. 다시 들어오면 이어서 한다."));
+    return;
+  }
+  if (room.role === "guest" && remote && remote.pending) {
+    foot.appendChild(el("p", "hint", "방장이 결과를 보는 중이다…"));
+    return;
+  }
+  const round = roomSnap.round;
+  if (room.role === "host" && !round) { hostNewRound(); return; }
+  if (!round) { foot.appendChild(el("p", "hint", "방장이 준비하는 중…")); return; }
+  if (round.phase === "talk") { renderOnlineTalk(foot, round); return; }
+
+  const mine = room.role === "host"
+    ? hostPick
+    : ((round.picks && round.picks.guest) || null);
+  const peerReady = room.role === "host"
+    ? Boolean(round.picks && round.picks.guest)
+    : Boolean(round.ready && round.ready.host);
+
+  const who = room.role === "host" ? 1 : 2;
+  const head = el("div", "duo-head p" + who);
+  head.appendChild(playerTag(who));
+  head.appendChild(el("span", "duo-who", mine ? "선택 완료" : "고를 차례"));
+  if (round.repicks) {
+    head.appendChild(el("span", "duo-note",
+      "다시 고르기 " + round.repicks + "/" + MAX_REPICK + "회째"));
+  }
+  head.appendChild(el("span", "duo-note", peerReady
+    ? roomSnap.peer.name + " 선택 완료"
+    : roomSnap.peer.name + " 고르는 중…"));
+  foot.appendChild(head);
+
+  foot.appendChild(choiceList(
+    (c) => () => onlinePick(c.index + 1),
+    (c) => (mine === c.index + 1 ? playerTag(who, "나") : null),
+    Boolean(mine),
+  ));
+}
+
+function onlinePick(index) {
+  if (revealing()) { finishReveal(); return; }
+  if (room.role === "host") {
+    hostPick = index;
+    // 내 선택은 아직 올리지 않는다. "선택 완료" 만 알린다.
+    room.publishRoundPatch({ "ready/host": true }).catch(() => {});
+    renderChoices();
+    hostTryResolve();
+  } else {
+    room.sendPick(index).catch((e) => toast(netMessage(e)));
+  }
+}
+
+let hostRoundPending = false;
+
+function hostNewRound() {
+  if (hostRoundPending) return;
+  hostRoundPending = true;
+  hostTurn = new DuoTurn(game.c.scene(game.state.scene));
+  hostPick = null;
+  roundSeq += 1;
+  room.publishRound({
+    id: roundSeq, phase: "pick", repicks: 0, ready: {}, picks: {},
+  }).catch(() => {}).finally(() => { hostRoundPending = false; });
+}
+
+function hostOnRound(snap) {
+  const round = snap.round;
+  if (!round) return;
+  if (round.phase === "pick") { hostTryResolve(); return; }
+  if (round.phase === "talk" && round.want && round.want.guest) {
+    const how = round.want.guest;
+    room.publishRoundPatch({ "want/guest": null }).catch(() => {});
+    if (how === "repick") hostRepick();
+    else hostDecide(how);
+  }
+}
+
+function hostTryResolve() {
+  const round = roomSnap && roomSnap.round;
+  if (!round || round.phase !== "pick" || !hostTurn) return;
+  const g = round.picks && round.picks.guest;
+  if (hostPick === null || !g) return;
+
+  const kind = hostTurn.submit(hostPick, g);
+  if (kind !== TALK) { hostFinish(kind, hostPick, hostPick, g); return; }
+  if (!hostTurn.canRepick()) { hostDecide(LEAD); return; }
+
+  const lead = game.leadOf();
+  const limit = settings.talkLimit;
+  room.publishRound({
+    id: round.id,
+    phase: "talk",
+    repicks: hostTurn.repicks,
+    picks: { host: hostPick, guest: g },
+    lead: { name: lead.name, player: lead.player },
+    risk: { host: game.riskOf(hostPick - 1).text, guest: game.riskOf(g - 1).text },
+    limit,
+    endsAt: limit ? Date.now() + limit * 1000 : 0,
+  }).catch(() => {});
+}
+
+function hostRepick() {
+  if (!hostTurn) return;
+  hostTurn.repick();
+  hostPick = null;
+  stopTalkTimer();
+  room.publishRound({
+    id: roundSeq, phase: "pick", repicks: hostTurn.repicks, ready: {}, picks: {},
+  }).catch(() => {});
+}
+
+function hostDecide(how) {
+  if (!hostTurn || hostTurn.p1 === null) return;
+  stopTalkTimer();
+  const r = hostTurn.decide(how, game.rng);
+  hostFinish(r.kind, r.index, hostTurn.p1, hostTurn.p2);
+}
+
+function hostFinish(kind, index, p1, p2) {
+  stopTalkTimer();
+  const before = game.state.teamwork;
+  const after = settle(game.state, kind);
+  const n1 = game.state.nameOf("yj");
+  const n2 = game.state.nameOf("sc");
+  const extra = kind === LEAD ? " — 주도권자 " + game.leadOf().name + "의 [" + index + "]"
+    : kind === COIN ? " — 동전이 고른 것은 [" + index + "]" : "";
+  const sign = after - before > 0 ? "+" : "";
+  const note = {
+    t: "duo",
+    text: n1 + " [" + p1 + "] · " + n2 + " [" + p2 + "] → " + KIND_LABEL[kind] + extra
+      + ". 팀워크 " + sign + (after - before) + " → " + after,
+  };
+  hostTurn = null;
+  hostPick = null;
+  room.publishRound(null).catch(() => {});
+  room.clearChat().catch(() => {});
+  chatLines = [];
+  choose(index - 1, [note]);
+}
+
+function renderOnlineTalk(foot, round) {
+  const box = el("div", "talk");
+  box.appendChild(el("h3", "talk-h", "상의 — 두 사람이 다르게 골랐다"));
+  const all = curChoices();
+  const names = { host: curNameOf("yj"), guest: curNameOf("sc") };
+  for (const who of ["host", "guest"]) {
+    const idx = (round.picks || {})[who];
+    const row = el("div", "talk-row " + (who === "host" ? "p1" : "p2"));
+    const top = el("div", "talk-top");
+    top.appendChild(playerTag(who === "host" ? 1 : 2));
+    top.appendChild(el("span", "talk-name", names[who]));
+    const c = all[idx - 1];
+    top.appendChild(el("span", "talk-txt", "[" + idx + "] " + (c ? c.text : "")));
+    row.appendChild(top);
+    row.appendChild(el("p", "talk-risk", (round.risk && round.risk[who]) || ""));
+    box.appendChild(row);
+  }
+  if (round.lead) {
+    box.appendChild(el("p", "talk-lead",
+      "이 장면의 주도권자: " + round.lead.name + " (플레이어 " + round.lead.player + ")"));
+  }
+
+  const row = el("div", "talk-buttons");
+  const btn = (label, cls, how, off) => {
+    const b = el("button", "btn " + cls, label);
+    b.type = "button";
+    b.disabled = Boolean(off);
+    b.onclick = () => onlineWant(how);
+    row.appendChild(b);
+  };
+  const left = MAX_REPICK - (round.repicks || 0);
+  btn(left > 0 ? "다시 고르기 (남은 " + left + "회)" : "다시 고르기 (다 썼다)",
+    "", "repick", left <= 0);
+  btn("주도권자가 정한다", "primary", LEAD);
+  btn("동전을 던진다", "", COIN);
+  box.appendChild(row);
+
+  if (round.endsAt) {
+    const t = el("p", "talk-timer");
+    t.id = "talk-timer";
+    box.appendChild(t);
+  }
+
+  box.appendChild(buildChat());
+  foot.appendChild(box);
+  if (round.endsAt) startOnlineTimer(round.endsAt);
+}
+
+function onlineWant(how) {
+  if (room.role === "host") {
+    if (how === "repick") hostRepick();
+    else hostDecide(how);
+  } else {
+    room.sendWant(how).catch((e) => toast(netMessage(e)));
+  }
+}
+
+function startOnlineTimer(endsAt) {
+  stopTalkTimer();
+  const tick = () => {
+    const node = $("talk-timer");
+    if (!node) { stopTalkTimer(); return; }
+    const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+    node.textContent = left > 0
+      ? "남은 시간 " + left + "초 — 다 되면 주도권자가 정한다."
+      : "시간이 다 됐다.";
+    if (left <= 0) {
+      stopTalkTimer();
+      if (room.role === "host") hostDecide(LEAD);
+      return;
+    }
+    talkTimer = setTimeout(tick, 500);
+  };
+  tick();
+}
+
+/* ---- 짧은 채팅 ---- */
+
+function buildChat() {
+  const box = el("div", "chat");
+  const log = el("div", "chat-log");
+  log.id = "chat-log";
+  box.appendChild(log);
+
+  const quick = el("div", "chat-quick");
+  for (const q of QUICK_CHAT) {
+    const b = el("button", "btn tiny", q);
+    b.type = "button";
+    b.onclick = () => room.sendChat(q).catch(() => {});
+    quick.appendChild(b);
+  }
+  box.appendChild(quick);
+
+  const row = el("div", "chat-row");
+  const input = el("input", "chat-input");
+  input.id = "chat-input";
+  input.type = "text";
+  input.maxLength = CHAT_MAX;
+  input.placeholder = "한 줄 (" + CHAT_MAX + "자까지)";
+  input.autocomplete = "off";
+  const send = el("button", "btn", "보내기");
+  send.type = "button";
+  const fire = () => {
+    const t = input.value.trim();
+    if (!t) return;
+    input.value = "";
+    room.sendChat(t).catch(() => {});
+  };
+  send.onclick = fire;
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); fire(); }
+  });
+  row.appendChild(input);
+  row.appendChild(send);
+  box.appendChild(row);
+  setTimeout(renderChat, 0);
+  return box;
+}
+
+function renderChat() {
+  const log = $("chat-log");
+  if (!log) return;
+  clear(log);
+  for (const m of chatLines) {
+    const line = el("p", "chat-line " + (m.who === "host" ? "p1" : "p2"));
+    line.appendChild(playerTag(m.who === "host" ? 1 : 2));
+    line.appendChild(el("span", "chat-text", m.text));
+    log.appendChild(line);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
 /* ===================== 엔딩 ===================== */
 
 function finishEnding(eid) {
@@ -702,18 +1416,7 @@ function finishEnding(eid) {
   paragraphs(text, v.text);
   $("end-stats").textContent = `생존 시간 ${v.day}일차 ${v.clockText} · 선택 ${v.picks}회`
     + ` · ${routeName(v.route)}`;
-  const dv = game.duoView();
-  const dnode = $("end-duo");
-  clear(dnode);
-  dnode.hidden = !dv;
-  if (dv) {
-    dnode.appendChild(el("p", null,
-      `둘이 고른 판 ${dv.rounds}회 · 합의율 ${dv.rate}% (같은 선택 ${dv.same}회)`));
-    dnode.appendChild(el("p", null,
-      `상의 ${dv.talks}회 · 다시 골라 합의 ${dv.repick}회`
-      + ` · 주도권자 결정 ${dv.lead}회 · 동전 ${dv.coin}회`));
-    dnode.appendChild(el("p", null, `팀워크 ${dv.teamwork}`));
-  }
+  renderDuoStats(game.duoView());
   const nw = $("end-new");
   if (rec.first) {
     nw.hidden = false;
@@ -724,6 +1427,7 @@ function finishEnding(eid) {
   $("end-codex").textContent = codexLine(codexSummary(content, rec.codex));
   show("ending");
   $("ending").scrollTop = 0;
+  if (room && room.role === "host") pushView(eid);
 }
 
 /* ===================== 겹쳐 띄우는 창 ===================== */
@@ -1169,6 +1873,21 @@ function wire() {
       else startFromSetup();
     });
   }
+  $("btn-room-create").onclick = createRoom;
+  $("btn-room-join").onclick = joinRoom;
+  $("btn-room-reopen").onclick = reopenRoom;
+  $("btn-room-copy").onclick = copyRoomLink;
+  $("btn-room-reissue").onclick = reissueCode;
+  $("btn-room-start").onclick = hostStart;
+  $("btn-room-leave").onclick = () => leaveRoom("방에서 나왔다.");
+  $("in-room").addEventListener("input", (e) => {
+    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    roomError("");
+  });
+  $("in-room").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); joinRoom(); }
+  });
+
   $("btn-title-codex").onclick = openCodex;
   $("btn-title-load").onclick = () => openSlots("load");
   $("btn-title-settings").onclick = openSettings;
@@ -1208,6 +1927,7 @@ function wire() {
     if (/^[1-5]$/.test(e.key)) {
       e.preventDefault();
       if (revealing()) { finishReveal(); return; }
+      if (online() || twoPlayer()) return;   // 둘이 고를 때는 화면의 버튼으로만
       const i = Number(e.key) - 1;
       const c = game.choices()[i];
       if (!c) return;

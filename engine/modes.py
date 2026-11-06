@@ -27,8 +27,12 @@ MODE_DESC = {
 MODE_READY = {
     SOLO: True,
     LOCAL2: True,
-    ONLINE: False,
+    ONLINE: True,
 }
+
+# 웹에서만 되는 모드. 터미널 시작 화면에서는 고를 수 없다.
+# 온라인은 방 코드로 두 기기가 만나는 방식이라 터미널에 올릴 자리가 없다.
+WEB_ONLY = (ONLINE,)
 
 # 이름을 물을 때 쓰는 두 칸의 이름표. (첫 칸 = {me}, 둘째 칸 = {friend})
 MODE_NAME_LABEL = {
@@ -55,3 +59,7 @@ def name_labels(mode: str) -> tuple:
 
 def is_ready(mode: str) -> bool:
     return bool(MODE_READY.get(mode))
+
+
+def is_web_only(mode: str) -> bool:
+    return mode in WEB_ONLY

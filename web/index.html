@@ -54,6 +54,23 @@
         </div>
       </div>
 
+      <!-- 온라인으로 둘이: 이름은 각자 자기 기기에서 넣고, 방 코드로 만난다 -->
+      <div id="online-box" class="online-box" hidden>
+        <p class="hint">이름은 각자 자기 기기에서 넣는다. 방장이 방을 만들고 코드를 알려 준다.</p>
+        <div class="row">
+          <button id="btn-room-create" class="btn primary">방 만들기</button>
+        </div>
+        <div class="join-row">
+          <label for="in-room">방 코드</label>
+          <input id="in-room" type="text" maxlength="6" autocomplete="off"
+                 spellcheck="false" inputmode="latin" enterkeyhint="go"
+                 placeholder="영문·숫자 6자">
+          <button id="btn-room-join" class="btn">참가</button>
+        </div>
+        <p id="room-err" class="field-err" role="status"></p>
+        <button id="btn-room-reopen" class="btn" hidden></button>
+      </div>
+
       <button id="btn-start" class="btn big primary" disabled>시작</button>
     </section>
 
@@ -65,6 +82,35 @@
       <button id="btn-title-settings" class="btn">설정</button>
     </div>
     <p id="storage-warn" class="warn" hidden></p>
+  </div>
+</div>
+
+<!-- ======================= 방 화면 (온라인) ======================= -->
+<div id="room" class="screen room" hidden>
+  <div class="room-inner">
+    <h1 class="room-h1">온라인으로 둘이</h1>
+
+    <section class="room-code-box">
+      <p class="room-code-label">방 코드</p>
+      <p id="room-code" class="room-code"></p>
+      <div class="row">
+        <button id="btn-room-copy" class="btn">링크 복사</button>
+        <button id="btn-room-reissue" class="btn" hidden>코드 새로 발급</button>
+      </div>
+      <p id="room-copy-msg" class="hint"></p>
+    </section>
+
+    <section class="room-people">
+      <h2 class="setup-h">사람</h2>
+      <ul id="room-players" class="room-players"></ul>
+      <div id="room-requests" class="room-requests"></div>
+      <p id="room-note" class="hint"></p>
+    </section>
+
+    <div class="title-buttons">
+      <button id="btn-room-start" class="btn big primary" disabled>시작</button>
+      <button id="btn-room-leave" class="btn danger">방 나가기</button>
+    </div>
   </div>
 </div>
 
@@ -86,6 +132,7 @@
     <button id="skip" class="skip" hidden>눌러서 전부 보기</button>
   </main>
 
+  <div id="net" class="net" hidden></div>
   <footer id="choices" class="choices"></footer>
 </div>
 

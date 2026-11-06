@@ -101,8 +101,9 @@ class Game:
         self.ui.header("좀비 생존 — 어떻게 할까")
         rows = []
         for i, m in enumerate(modes.MODES, 1):
-            ready = modes.is_ready(m)
-            tag = "" if ready else "  (준비 중)"
+            web_only = modes.is_web_only(m)
+            ready = modes.is_ready(m) and not web_only
+            tag = "" if ready else ("  (웹에서만 된다)" if web_only else "  (준비 중)")
             rows.append((i, m, ready, tag))
             self.ui.raw(f" {'[' if ready else '('}{i}{']' if ready else ')'}"
                         f" {modes.MODE_LABEL[m]}{tag}")
@@ -115,7 +116,9 @@ class Game:
             for i, m, ready, _ in rows:
                 if cmd == str(i):
                     if not ready:
-                        self.ui.raw(" 그 모드는 아직 준비 중이다.")
+                        self.ui.raw(" 그 모드는 웹에서만 된다."
+                                    if modes.is_web_only(m)
+                                    else " 그 모드는 아직 준비 중이다.")
                         break
                     return m
             else:

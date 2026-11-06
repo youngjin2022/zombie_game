@@ -243,7 +243,14 @@ export const MODE_DESC = {
 export const MODE_READY = {
   [SOLO]: true,
   [LOCAL2]: true,
-  [ONLINE]: false,
+  [ONLINE]: true,
+};
+
+// 웹에서만 되는 모드. 터미널 시작 화면에서는 고를 수 없다.
+export const WEB_ONLY = [ONLINE];
+
+export function isWebOnly(mode) {
+  return WEB_ONLY.includes(mode);
 };
 
 // 이름을 물을 때 쓰는 두 칸의 이름표. (첫 칸 = {me}, 둘째 칸 = {friend})
