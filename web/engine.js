@@ -726,7 +726,7 @@ export function meets(state, req, content) {
   if ("max_hunger" in req && state.hunger > req.max_hunger) return no("(너무 지쳤다)");
   if ("min_warmth" in req && state.warmth < req.min_warmth) return no("(체온이 부족하다)");
   if ("max_warmth" in req && state.warmth > req.max_warmth) return no("(해당 없음)");
-  if ("min_sc_aim" in req && state.sc_aim < req.min_sc_aim) return no("(승철 사격 미숙)");
+  if ("min_sc_aim" in req && state.sc_aim < req.min_sc_aim) return no(`(${state.nameOf("sc")} 사격 미숙)`);
   if ("min_food" in req && state.food < req.min_food) return no("(식량 없음)");
   if ("min_water" in req && state.water < req.min_water) return no("(물 부족)");
   if ("max_water" in req && state.water > req.max_water) return no("(해당 없음)");
@@ -918,7 +918,8 @@ export function summary(before, state, content) {
 
   const dt = after.total_min - before.total_min;
   if (dt) parts.push(`시간 ${dt}분 경과`);
-  for (const [key, label] of [["hp_yj", "영진 체력"], ["hp_sc", "승철 체력"]]) {
+  const nmYj = state.nameOf("yj"), nmSc = state.nameOf("sc");
+  for (const [key, label] of [["hp_yj", `${nmYj} 체력`], ["hp_sc", `${nmSc} 체력`]]) {
     const d = after[key] - before[key];
     if (d) parts.push(`${label} ${d > 0 ? "+" : ""}${d}`);
   }
@@ -929,13 +930,13 @@ export function summary(before, state, content) {
     const raw = after[key] - before[key];
     if (signedRound(raw) !== "0") parts.push(`${label} ${signedRound(raw)}${unit}`);
   }
-  for (const [key, label] of [["ammo_yj", "영진 탄약"], ["ammo_sc", "승철 탄약"]]) {
+  for (const [key, label] of [["ammo_yj", `${nmYj} 탄약`], ["ammo_sc", `${nmSc} 탄약`]]) {
     const d = after[key] - before[key];
     if (d) parts.push(`${label} ${d > 0 ? "+" : ""}${d}발`);
   }
   if (after.sc_aim !== before.sc_aim) {
     const d = after.sc_aim - before.sc_aim;
-    parts.push(`승철 사격 숙련 ${d > 0 ? "+" : ""}${d}`);
+    parts.push(`${nmSc} 사격 숙련 ${d > 0 ? "+" : ""}${d}`);
   }
 
   const names = (ids) => ids.map((i) => (content ? content.itemName(i) : i));

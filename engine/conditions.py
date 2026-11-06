@@ -86,7 +86,7 @@ def meets(state: "st.GameState", req: dict | None, content=None) -> tuple:
     if "max_warmth" in req and state.warmth > req["max_warmth"]:
         return False, "(해당 없음)"
     if "min_sc_aim" in req and state.sc_aim < req["min_sc_aim"]:
-        return False, "(승철 사격 미숙)"
+        return False, f"({state.name_of('sc')} 사격 미숙)"
     if "min_food" in req and state.food < req["min_food"]:
         return False, "(식량 없음)"
     if "min_water" in req and state.water < req["min_water"]:

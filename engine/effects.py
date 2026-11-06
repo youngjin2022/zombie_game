@@ -116,7 +116,8 @@ def summary(before: dict, state, content=None) -> list:
     dt = after["total_min"] - before["total_min"]
     if dt:
         parts.append(f"시간 {dt}분 경과")
-    for key, label in (("hp_yj", "영진 체력"), ("hp_sc", "승철 체력")):
+    nm_yj, nm_sc = state.name_of("yj"), state.name_of("sc")
+    for key, label in (("hp_yj", f"{nm_yj} 체력"), ("hp_sc", f"{nm_sc} 체력")):
         d = after[key] - before[key]
         if d:
             parts.append(f"{label} {d:+d}")
@@ -126,12 +127,12 @@ def summary(before: dict, state, content=None) -> list:
         d = round(after[key] - before[key])
         if d:
             parts.append(f"{label} {d:+.0f}{unit}".replace("+-", "-"))
-    for key, label in (("ammo_yj", "영진 탄약"), ("ammo_sc", "승철 탄약")):
+    for key, label in (("ammo_yj", f"{nm_yj} 탄약"), ("ammo_sc", f"{nm_sc} 탄약")):
         d = after[key] - before[key]
         if d:
             parts.append(f"{label} {d:+d}발")
     if after["sc_aim"] != before["sc_aim"]:
-        parts.append(f"승철 사격 숙련 {after['sc_aim'] - before['sc_aim']:+d}")
+        parts.append(f"{nm_sc} 사격 숙련 {after['sc_aim'] - before['sc_aim']:+d}")
 
     def names(ids):
         return [content.item_name(i) if content else i for i in ids]
